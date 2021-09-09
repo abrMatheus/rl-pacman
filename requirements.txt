@@ -1,2 +1,6 @@
 numpy
+tqdm
+matplotlib
+click
+pandas
 

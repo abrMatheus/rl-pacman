@@ -1,6 +1,15 @@
 # Autonomous Pacman Player
 
 
+# Report
+
+The details and experiments data are described in the [report.ipynb](report.ipynb), to see the report run:
+
+
+```sh
+jupyter notebook report.ipynb
+```
+
 # Usage
 
 Creating and activating your conda environmnet.
@@ -16,8 +25,24 @@ Installing requirements.
 pip install -r requirements.txt
 ```
 
-Running a demo.
+Running a simple demo.
 
 ```sh
 python pacman.py --layout testMaze --pacman DumbAgent
+```
+
+
+## Reinforcement Learning
+
+Check options for running a single Reinforcement Learning instance:
+
+```sh
+python rlMain.py --help
+```
+
+
+The [rlExperiments.py](rlExperiments.py) compares a series of parameters for each layout (**take a lot of time**), check its options with
+
+```sh
+python rlExperiments.py --help
 ```
