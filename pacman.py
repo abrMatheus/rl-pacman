@@ -47,6 +47,11 @@ from util import nearestPoint
 from util import manhattanDistance
 import util, layout
 import sys, types, time, random, os
+import numpy as  np
+import json
+import matplotlib.pyplot as plt
+from  matplotlib.colors import LinearSegmentedColormap
+from mpl_toolkits.mplot3d import Axes3D
 
 ###################################################
 # YOUR INTERFACE TO THE PACMAN WORLD: A GameState #
@@ -72,12 +77,12 @@ class GameState:
     ####################################################
 
     # static variable keeps track of which states have had getLegalActions called
-    explored = set()
-    def getAndResetExplored():
-        tmp = GameState.explored.copy()
-        GameState.explored = set()
-        return tmp
-    getAndResetExplored = staticmethod(getAndResetExplored)
+    #explored = set()
+    #def getAndResetExplored():
+    #    tmp = GameState.explored.copy()
+    #    GameState.explored = set()
+    #    return tmp
+    #getAndResetExplored = staticmethod(getAndResetExplored)
 
     def getLegalActions( self, agentIndex=0 ):
         """
@@ -120,8 +125,8 @@ class GameState:
         # Book keeping
         state.data._agentMoved = agentIndex
         state.data.score += state.data.scoreChange
-        GameState.explored.add(self)
-        GameState.explored.add(state)
+        #GameState.explored.add(self)
+        #GameState.explored.add(state)
         return state
 
     def getLegalPacmanActions( self ):
@@ -211,6 +216,8 @@ class GameState:
 
     def isWin( self ):
         return self.data._win
+
+
 
     #############################################
     #             Helper methods:               #
@@ -358,6 +365,9 @@ class PacmanRules:
 
     def consume( position, state ):
         x,y = position
+        currentFood = state.getFood()
+        foodgrid = np.array(currentFood)
+        #print(currentFood)
         # Eat food
         if state.data.food[x][y]:
             state.data.scoreChange += 10
@@ -390,11 +400,11 @@ class GhostRules:
         """
         conf = state.getGhostState( ghostIndex ).configuration
         possibleActions = Actions.getPossibleActions( conf, state.data.layout.walls )
-        reverse = Actions.reverseDirection( conf.direction )
+        #reverse = Actions.reverseDirection( conf.direction )
         if Directions.STOP in possibleActions:
             possibleActions.remove( Directions.STOP )
-        if reverse in possibleActions and len( possibleActions ) > 1:
-            possibleActions.remove( reverse )
+        #if reverse in possibleActions and len( possibleActions ) > 1:
+        #    possibleActions.remove( reverse )
         return possibleActions
     getLegalActions = staticmethod( getLegalActions )
 
@@ -515,6 +525,12 @@ def readCommand( argv ):
                       help='A recorded game file (pickle) to replay', default=None)
     parser.add_option('-a','--agentArgs',dest='agentArgs',
                       help='Comma separated values sent to agent. e.g. "opt1=val1,opt2,opt3=val3"')
+    parser.add_option('-o','--outputModel',dest='outputModel',
+                      help='JSON file path to save trained model', default=None)
+    parser.add_option('--outputPlot',dest='outputPlot',
+                      help='Path to save the plotted function', default="plots/")
+    parser.add_option('-i','--inputModel',dest='inputModel',
+                      help='JSON file with pre-trained model', default=None)
     parser.add_option('-x', '--numTraining', dest='numTraining', type='int',
                       help=default('How many episodes are training (suppresses output)'), default=0)
     parser.add_option('--frameTime', dest='frameTime', type='float',
@@ -542,9 +558,23 @@ def readCommand( argv ):
     agentOpts = parseAgentArgs(options.agentArgs)
     if options.numTraining > 0:
         args['numTraining'] = options.numTraining
-        if 'numTraining' not in agentOpts: agentOpts['numTraining'] = options.numTraining
+        #if 'numTraining' not in agentOpts: agentOpts['numTraining'] = options.numTraining
     pacman = pacmanType(**agentOpts) # Instantiate Pacman with agentArgs
+
     args['pacman'] = pacman
+    if options.outputModel is not None:
+        args['pacman'].output_path = options.outputModel
+        args['pacman'].plot_path = options.outputPlot
+        if not os.path.exists(args['pacman'].plot_path):
+            os.makedirs(args['pacman'].plot_path)
+        args['pacman'].max_Q_val = np.zeros((args['layout'].width-2, args['layout'].height-2))
+        args['pacman'].max_Q_state = np.empty((args['layout'].width-2, args['layout'].height-2), dtype=object)
+        args['pacman'].set_grid_mapping(args['layout'].width, args['layout'].height, args['layout'].walls)
+
+    if(options.inputModel is not None):
+        with open(options.inputModel) as json_file:
+            data = json.load(json_file)
+        args['pacman'].state_action_rewards = data
 
     # Don't display training games
     if 'numTrain' in agentOpts:
@@ -625,6 +655,14 @@ def replayGame( layout, actions, display ):
 
     display.finish()
 
+def plot2d(pacman, i):
+    grid = np.copy(pacman.max_Q_val)
+    grid[grid == 0] = np.min(grid)
+    grid =  ((grid - np.min(grid)) / (np.max(grid) - np.min(grid)))
+    grid = np.flip(grid.T, 0)
+    plt.imshow(grid, cmap=LinearSegmentedColormap.from_list('br',["b", "r"], N=256) , interpolation='nearest')
+    plt.savefig(pacman.plot_path+"/"+str(i)+".png")
+
 def runGames( layout, pacman, ghosts, display, numGames, record, numTraining = 0, catchExceptions=False, timeout=30 ):
     import __main__
     __main__.__dict__['_display'] = display
@@ -639,7 +677,18 @@ def runGames( layout, pacman, ghosts, display, numGames, record, numTraining = 0
             import textDisplay
             gameDisplay = textDisplay.NullGraphics()
             rules.quiet = True
+            #gameDisplay = display
+            print("Training : ", i, "/", numTraining)
+
+            if(i%500000 == 0 and len(pacman.state_action_rewards) > 1 and pacman.output_path != None):
+                pacman.saveTable()
         else:
+            pacman.training = False
+            try:
+                if(len(pacman.state_action_rewards) > 1 and pacman.output_path != None):
+                    pacman.saveTable()
+            except:
+                pass
             gameDisplay = display
             rules.quiet = False
         game = rules.newGame( layout, pacman, ghosts, gameDisplay, beQuiet, catchExceptions)
@@ -654,7 +703,14 @@ def runGames( layout, pacman, ghosts, display, numGames, record, numTraining = 0
             cPickle.dump(components, f)
             f.close()
 
+        try:
+            if pacman.max_Q_val is not None and (i)%1000 == 0 and i!= 0:
+                plot2d(pacman, i)
+        except:
+            pass
+
     if (numGames-numTraining) > 0:
+
         scores = [game.state.getScore() for game in games]
         wins = [game.state.isWin() for game in games]
         winRate = wins.count(True)/ float(len(wins))

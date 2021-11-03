@@ -525,6 +525,7 @@ class Game:
         self.muteAgents = muteAgents
         self.catchExceptions = catchExceptions
         self.moveHistory = []
+        self.rewardHistory = []
         self.totalAgentTimes = [0 for agent in agents]
         self.totalAgentTimeWarnings = [0 for agent in agents]
         self.agentTimeout = False
@@ -686,33 +687,37 @@ class Game:
                 action = agent.getAction(observation)
             self.unmute()
 
-            # Execute the action
-            self.moveHistory.append( (agentIndex, action) )
-            if self.catchExceptions:
-                try:
-                    self.state = self.state.generateSuccessor( agentIndex, action )
-                except Exception,data:
-                    self.mute(agentIndex)
-                    self._agentCrash(agentIndex)
-                    self.unmute()
-                    return
+            if(observation.isLose()):
+                self.rules.lose(self.state, self)
             else:
-                self.state = self.state.generateSuccessor( agentIndex, action )
+                # Execute the action
+                #self.moveHistory.append( (agentIndex, action) )
+                if self.catchExceptions:
+                    try:
+                        self.state = self.state.generateSuccessor( agentIndex, action )
+                    except Exception,data:
+                        self.mute(agentIndex)
+                        self._agentCrash(agentIndex)
+                        self.unmute()
+                        return
+                else:
+                    self.state = self.state.generateSuccessor( agentIndex, action )
+                #self.rewardHistory.append( (agentIndex, self.state.getScore()) )
 
-            # Change the display
-            self.display.update( self.state.data )
-            ###idx = agentIndex - agentIndex % 2 + 1
-            ###self.display.update( self.state.makeObservation(idx).data )
+                # Change the display
+                self.display.update( self.state.data )
+                ###idx = agentIndex - agentIndex % 2 + 1
+                ###self.display.update( self.state.makeObservation(idx).data )
 
-            # Allow for game specific conditions (winning, losing, etc.)
-            self.rules.process(self.state, self)
-            # Track progress
-            if agentIndex == numAgents + 1: self.numMoves += 1
-            # Next agent
-            agentIndex = ( agentIndex + 1 ) % numAgents
+                # Allow for game specific conditions (winning, losing, etc.)
+                self.rules.process(self.state, self)
+                # Track progress
+                if agentIndex == numAgents + 1: self.numMoves += 1
+                # Next agent
+                agentIndex = ( agentIndex + 1 ) % numAgents
 
-            if _BOINC_ENABLED:
-                boinc.set_fraction_done(self.getProgress())
+                if _BOINC_ENABLED:
+                    boinc.set_fraction_done(self.getProgress())
 
         # inform a learning agent of the game result
         for agentIndex, agent in enumerate(self.agents):
