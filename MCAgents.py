@@ -49,14 +49,13 @@ class MCAgent(Agent):
         c = 0
         global grid_mapping
         grid_mapping = dict()
-        print(grid_height)
         for i in range(grid_width):
             for j in range(grid_height):
                 if(not walls[i][j]):
                     grid_mapping[c] = (i,j)
                     c+=1
 
-    def heat_map(self, state_id, action):
+    def update_heatmap(self, state_id, action):
         x,y = get_position_by_id(state_id)
         x = x-1 #To account for walls in the grid limit
         y = y-1 #To account for walls in the grid limit
@@ -82,8 +81,8 @@ class MCAgent(Agent):
         self.index = 0
 
         #Monte-carlo parameters
-        self.gamma = 0.99
-        self.epsilon_num = 1000.0
+        self.gamma = 0.9
+        self.epsilon_num = 100.0
 
     #Function used to save the state_action_reward table as a json file
     def saveTable(self):
@@ -127,16 +126,7 @@ class MCAgent(Agent):
                 alpha = (1.0/(self.state_action_rewards[state_id][selected][1]))
                 Qsa = self.state_action_rewards[state_id][selected][0]
                 self.state_action_rewards[state_id][selected][0] = Qsa + alpha * (G - Qsa)
-                x,y = get_position_by_id(state_id)
-                x = x-1
-                y = y-1
-                if self.state_action_rewards[state_id][selected][0] > self.max_Q_val[x][y] \
-                        or self.max_Q_val[x][y] == 0 or self.max_Q_state[x][y] == None \
-                        or (self.max_Q_state[x][y][0] == state_id and self.max_Q_state[x][y][1] == selected):
-                    self.max_Q_state[x][y] = ["",""]
-                    self.max_Q_state[x][y][0] = state_id
-                    self.max_Q_state[x][y][1] = selected
-                    self.max_Q_val[x][y] = self.state_action_rewards[state_id][selected][0]
+                self.update_heatmap(state_id, selected)
         del visited_state_action
 
     def egreedy_policy(self, state, policy):
@@ -196,9 +186,13 @@ class MCAgent(Agent):
         state_id = get_state_id(state)
         action = self.egreedy_policy(state, self.state_action_rewards)
 
-        new_state = state.generateSuccessor(self.index, action)
+        #new_state = state.generateSuccessor(self.index, action)
 
-        self.episode.append([state_id, action, new_state.getScore()])
+        #self.episode.append([state_id, action, new_state.getScore()])
+        self.episode.append([state_id, action, 0])
+        #print(self.episode)
+        if self.episode_size > 0:
+            self.episode[self.episode_size-1][2] = state.getScore()
 
         if state_id not in self.state_action_rewards:
             self.state_action_rewards[state_id] = dict()
@@ -206,16 +200,20 @@ class MCAgent(Agent):
             self.state_action_rewards[state_id][action] = [0,0]
 
 
-        if(self.episode_size > 5000):
-            self.episode_size = 0
-            del self.episode
-            self.episode = []
-            state.data._lose = True
+        #if(self.episode_size > 5000):
+        #    self.episode_size = 0
+        #    del self.episode
+        #    self.episode = []
+        #    state.data._lose = True
 
-        if(new_state.isWin() or new_state.isLose()):
-            self.updateQ()
-            self.episode_size = 0
-            del self.episode
-            self.episode = []
+        #if(new_state.isWin() or new_state.isLose()):
+
         self.episode_size+=1
         return action
+
+    def final(self, state):
+        self.episode[self.episode_size-1][2] = state.getScore()
+        self.updateQ()
+        self.episode_size = 0
+        del self.episode
+        self.episode = []
