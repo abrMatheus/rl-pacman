@@ -651,3 +651,70 @@ def unmutePrint():
     sys.stdout = _ORIGINAL_STDOUT
     #sys.stderr = _ORIGINAL_STDERR
 
+
+grid_mapping = None
+grid_width = 0
+
+max_Q_state = None
+max_Q_val = None
+
+plot_path = None
+
+def set_grid_mapping(grid_width, grid_height, walls):
+    c = 0
+    global grid_mapping
+    grid_mapping = dict()
+    for i in range(grid_width):
+        for j in range(grid_height):
+            if(not walls[i][j]):
+                grid_mapping[c] = (i,j)
+                c+=1
+
+def get_state_id(state):
+    ghosts_list = state.getGhostPositions()
+    ghosts = state.getGhostStates()
+    scared_list = []
+    for g in ghosts:
+        if g.scaredTimer > 0:
+            position = g.getPosition()
+            scared_list.append(position)
+            ghosts_list.remove(position)
+    food_list = state.getFood()
+    pacman_position = state.getPacmanPosition()
+    walls = state.getWalls()
+    capsule_list = state.getCapsules()
+
+    x_size = food_list.width
+    y_size = food_list.height
+
+    uuid = ""
+    for i in range(x_size):
+        for j in range(y_size):
+            if(not walls[i][j]):
+                cell_val = int(food_list[i][j]) + 2*int( (i,j) in ghosts_list) + int(2**2 * ((i,j) == pacman_position)) + (2**3 * int( (i,j) in scared_list)) + (2**4 * int( (i,j) in capsule_list))
+                uuid += "_"+str(cell_val)
+    return uuid
+
+def get_position_by_id(state_id):
+        cells = state_id.split("_")
+        index = 0
+        for i,c in enumerate(cells):
+            if c != "":
+                if int(c) & 4 > 0:
+                    index = i-1
+        x,y = grid_mapping[index]
+
+        return (x,y)
+
+
+def update_heatmap(agent, state_id, action):
+        x,y = get_position_by_id(state_id)
+        x = x-1 #To account for walls in the grid limit
+        y = y-1 #To account for walls in the grid limit
+        if agent.state_action_rewards[state_id][action][0] > max_Q_val[x][y] \
+                or max_Q_val[x][y] == 0 or max_Q_state[x][y] == None \
+                or (max_Q_state[x][y][0] == state_id and max_Q_state[x][y][1] == action):
+            max_Q_state[x][y] = ["",""]
+            max_Q_state[x][y][0] = state_id
+            max_Q_state[x][y][1] = action
+            max_Q_val[x][y] = agent.state_action_rewards[state_id][action][0]

@@ -4,81 +4,30 @@ import util
 import json
 import numpy as np
 
-grid_mapping = None
-grid_width = 0
 
-def get_state_id(state):
-    ghosts_list = state.getGhostPositions()
-    ghosts = state.getGhostStates()
-    scared_list = []
-    for g in ghosts:
-        if g.scaredTimer > 0:
-            position = g.getPosition()
-            scared_list.append(position)
-            ghosts_list.remove(position)
-    food_list = state.getFood()
-    pacman_position = state.getPacmanPosition()
-    walls = state.getWalls()
-    capsule_list = state.getCapsules()
 
-    x_size = food_list.width
-    y_size = food_list.height
 
-    uuid = ""
-    for i in range(x_size):
-        for j in range(y_size):
-            if(not walls[i][j]):
-                cell_val = int(food_list[i][j]) + 2*int( (i,j) in ghosts_list) + int(2**2 * ((i,j) == pacman_position)) + (2**3 * int( (i,j) in scared_list)) + (2**4 * int( (i,j) in capsule_list))
-                uuid += "_"+str(cell_val)
-    return uuid
-
-def get_position_by_id(state_id):
-        cells = state_id.split("_")
-        index = 0
-        for i,c in enumerate(cells):
-            if c != "":
-                if int(c) & 4 > 0:
-                    index = i-1
-        x,y = grid_mapping[index]
-
-        return (x,y)
 
 class MCAgent(Agent):
-
-    def set_grid_mapping(self, grid_width, grid_height, walls):
-        c = 0
-        global grid_mapping
-        grid_mapping = dict()
-        for i in range(grid_width):
-            for j in range(grid_height):
-                if(not walls[i][j]):
-                    grid_mapping[c] = (i,j)
-                    c+=1
-
-    def update_heatmap(self, state_id, action):
-        x,y = get_position_by_id(state_id)
-        x = x-1 #To account for walls in the grid limit
-        y = y-1 #To account for walls in the grid limit
-        if self.state_action_rewards[state_id][action][0] > self.max_Q_val[x][y] \
-                or self.max_Q_val[x][y] == 0 or self.max_Q_state[x][y] == None \
-                or (self.max_Q_state[x][y][0] == state_id and self.max_Q_state[x][y][1] == action):
-            self.max_Q_state[x][y] = ["",""]
-            self.max_Q_state[x][y][0] = state_id
-            self.max_Q_state[x][y][1] = action
-            self.max_Q_val[x][y] = self.state_action_rewards[state_id][action][0]
-
     def __init__(self):
         #I use the same variable to count the number of times each state_action has been selected
         #self.state_action_rewards[state_id][action] is a list with [0] = reward, and [1] = count
         self.state_action_rewards = dict()
         self.output_path = None
-        self.max_Q_state = None
-        self.max_Q_val = None
         self.episode_size = 0
         self.episode = []
 
         #index is always 0 for pacman agents
         self.index = 0
+
+        self.gamma_range = np.arange(0.1, 1.0, 0.4)
+        self.gamma_range = np.concatenate([self.gamma_range, np.arange(0.95, 1.01, 0.05)])
+
+        self.epsilon_num_range = np.arange(10,101,40)
+        self.epsilon_num_range = np.concatenate([self.epsilon_num_range, np.arange(100,1001,400)])
+        self.epsilon_num_range = np.concatenate([self.epsilon_num_range, np.arange(1000,10001,4000)])
+
+        self.training_number_range = np.array([100,1000, 10000, 100000, 500000, 1000000])
 
         #Monte-carlo parameters
         self.gamma = 0.9
@@ -126,12 +75,13 @@ class MCAgent(Agent):
                 alpha = (1.0/(self.state_action_rewards[state_id][selected][1]))
                 Qsa = self.state_action_rewards[state_id][selected][0]
                 self.state_action_rewards[state_id][selected][0] = Qsa + alpha * (G - Qsa)
-                self.update_heatmap(state_id, selected)
+                if(util.max_Q_val is not None):
+                    util.update_heatmap(self, state_id, selected)
         del visited_state_action
 
     def egreedy_policy(self, state, policy):
         rand = np.random.rand()
-        state_id = get_state_id(state)
+        state_id = util.get_state_id(state)
         state_count = 0
         if state_id in self.state_action_rewards:
             for a_ in self.state_action_rewards[state_id]:
@@ -183,7 +133,7 @@ class MCAgent(Agent):
         return selected
 
     def getAction(self, state):
-        state_id = get_state_id(state)
+        state_id = util.get_state_id(state)
         action = self.egreedy_policy(state, self.state_action_rewards)
 
         #new_state = state.generateSuccessor(self.index, action)
@@ -217,3 +167,54 @@ class MCAgent(Agent):
         self.episode_size = 0
         del self.episode
         self.episode = []
+
+    def get_parameters_in_iteration(self, i):
+        x_size = self.epsilon_num_range.shape[0]
+        y_size = self.gamma_range.shape[0]
+        z_size = self.training_number_range.shape[0]
+
+        z = i%z_size
+        y = (i//z_size)%y_size
+        x = i//(y_size*z_size)%x_size
+
+        return self.epsilon_num_range[x], self.gamma_range[y], self.training_number_range[z]
+
+    def set_parameters_in_iteration(self, i):
+        x, y, z = self.get_parameters_in_iteration(i)
+        self.epsilon_num = x
+        self.gamma = y
+
+        return z
+
+    def get_training_space_size(self):
+        x = self.epsilon_num_range.shape[0]
+        y = self.gamma_range.shape[0]
+        z = self.training_number_range.shape[0]
+
+        return x*y*z
+
+    def reset_tables(self):
+        del self.state_action_rewards
+        self.state_action_rewards = dict()
+        self.episode_size = 0
+        self.episode = []
+
+    def write_best_parameters(self, best_parameters, average_score, output_file_path):
+        best_epsilon = best_parameters[0]
+        best_gamma = best_parameters[1]
+        best_n_training = best_parameters[2]
+        print("Epsilon : ", best_epsilon)
+        print("Gamma : ", best_gamma)
+        print("N_training : ", best_n_training)
+        print("Average Score : ", average_score)
+
+        output_file=open(output_file_path,mode="w")
+        string_to_write = "Epsilon : " + str(best_epsilon) + "\n"
+        output_file.write(string_to_write)
+        string_to_write = "Gamma : " + str(best_gamma) + "\n"
+        output_file.write(string_to_write)
+        string_to_write = "N_training : " + str(best_n_training) + "\n"
+        output_file.write(string_to_write)
+        string_to_write = "Average Score : " + str(average_score) + "\n"
+        output_file.write(string_to_write)
+        output_file.close()

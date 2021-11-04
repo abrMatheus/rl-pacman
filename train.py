@@ -4,7 +4,7 @@
 # educational purposes provided that (1) you do not distribute or publish
 # solutions, (2) you retain this notice, and (3) you provide clear
 # attribution to UC Berkeley, including a link to http://ai.berkeley.edu.
-# 
+#
 # Attribution Information: The Pacman AI projects were developed at UC Berkeley.
 # The core projects and autograders were primarily created by John DeNero
 # (denero@cs.berkeley.edu) and Dan Klein (klein@cs.berkeley.edu).
@@ -52,6 +52,8 @@ import json
 import matplotlib.pyplot as plt
 from  matplotlib.colors import LinearSegmentedColormap
 from mpl_toolkits.mplot3d import Axes3D
+
+from tqdm import tqdm
 
 ###################################################
 # YOUR INTERFACE TO THE PACMAN WORLD: A GameState #
@@ -490,127 +492,58 @@ def readCommand( argv ):
     from optparse import OptionParser
     usageStr = """
     USAGE:      python pacman.py <options>
-    EXAMPLES:   (1) python pacman.py
+    EXAMPLES:   (1) python train.py -p AgentName
                     - starts an interactive game
-                (2) python pacman.py --layout smallClassic --zoom 2
-                OR  python pacman.py -l smallClassic -z 2
-                    - starts an interactive game on a smaller board, zoomed in
     """
     parser = OptionParser(usageStr)
 
-    parser.add_option('-n', '--numGames', dest='numGames', type='int',
-                      help=default('the number of GAMES to play'), metavar='GAMES', default=1)
     parser.add_option('-l', '--layout', dest='layout',
                       help=default('the LAYOUT_FILE from which to load the map layout'),
                       metavar='LAYOUT_FILE', default='mediumClassic')
     parser.add_option('-p', '--pacman', dest='pacman',
                       help=default('the agent TYPE in the pacmanAgents module to use'),
                       metavar='TYPE', default='KeyboardAgent')
-    parser.add_option('-t', '--textGraphics', action='store_true', dest='textGraphics',
-                      help='Display output as text only', default=False)
-    parser.add_option('-q', '--quietTextGraphics', action='store_true', dest='quietGraphics',
-                      help='Generate minimal output and no graphics', default=False)
+    parser.add_option('-a','--agentArgs',dest='agentArgs',
+                      help='Comma separated values sent to agent. e.g. "opt1=val1,opt2,opt3=val3"')
+    parser.add_option('-o','--output_file',dest='output_file',
+                      help='txt file containing the optimum parameters', default="parameters.txt")
     parser.add_option('-g', '--ghosts', dest='ghost',
                       help=default('the ghost agent TYPE in the ghostAgents module to use'),
                       metavar = 'TYPE', default='RandomGhost')
     parser.add_option('-k', '--numghosts', type='int', dest='numGhosts',
                       help=default('The maximum number of ghosts to use'), default=4)
-    parser.add_option('-z', '--zoom', type='float', dest='zoom',
-                      help=default('Zoom the size of the graphics window'), default=1.0)
-    parser.add_option('-f', '--fixRandomSeed', action='store_true', dest='fixRandomSeed',
-                      help='Fixes the random seed to always play the same game', default=False)
-    parser.add_option('-r', '--recordActions', action='store_true', dest='record',
-                      help='Writes game histories to a file (named by the time they were played)', default=False)
-    parser.add_option('--replay', dest='gameToReplay',
-                      help='A recorded game file (pickle) to replay', default=None)
-    parser.add_option('-a','--agentArgs',dest='agentArgs',
-                      help='Comma separated values sent to agent. e.g. "opt1=val1,opt2,opt3=val3"')
-    parser.add_option('-o','--outputModel',dest='outputModel',
-                      help='JSON file path to save trained model', default=None)
-    parser.add_option('--outputPlot',dest='outputPlot',
-                      help='Path to save the plotted function', default="plots/")
-    parser.add_option('-i','--inputModel',dest='inputModel',
-                      help='JSON file with pre-trained model', default=None)
-    parser.add_option('-x', '--numTraining', dest='numTraining', type='int',
-                      help=default('How many episodes are training (suppresses output)'), default=0)
-    parser.add_option('--frameTime', dest='frameTime', type='float',
-                      help=default('Time to delay between frames; <0 means keyboard'), default=0.1)
-    parser.add_option('-c', '--catchExceptions', action='store_true', dest='catchExceptions',
-                      help='Turns on exception handling and timeouts during games', default=False)
-    parser.add_option('--timeout', dest='timeout', type='int',
-                      help=default('Maximum length of time an agent can spend computing in a single game'), default=30)
 
     options, otherjunk = parser.parse_args(argv)
     if len(otherjunk) != 0:
         raise Exception('Command line input not understood: ' + str(otherjunk))
     args = dict()
 
-    # Fix the random seed
-    if options.fixRandomSeed: random.seed('cs188')
-
     # Choose a layout
+    args["output_file"] = options.output_file
     args['layout'] = layout.getLayout( options.layout )
     if args['layout'] == None: raise Exception("The layout " + options.layout + " cannot be found")
 
     # Choose a Pacman agent
-    noKeyboard = options.gameToReplay == None and (options.textGraphics or options.quietGraphics)
+    noKeyboard = True
     pacmanType = loadAgent(options.pacman, noKeyboard)
     agentOpts = parseAgentArgs(options.agentArgs)
-    if options.numTraining > 0:
-        args['numTraining'] = options.numTraining
         #if 'numTraining' not in agentOpts: agentOpts['numTraining'] = options.numTraining
     pacman = pacmanType(**agentOpts) # Instantiate Pacman with agentArgs
 
+    ghostType = loadAgent(options.ghost, noKeyboard)
+    args['ghosts'] = [ghostType( i+1 ) for i in range( options.numGhosts )]
+
     args['pacman'] = pacman
-    if options.outputModel is not None:
-        args['pacman'].output_path = options.outputModel
-        util.plot_path = options.outputPlot
-        if not os.path.exists(util.plot_path):
-            os.makedirs(util.plot_path)
-        util.max_Q_val = np.zeros((args['layout'].width-2, args['layout'].height-2))
-        util.max_Q_state = np.empty((args['layout'].width-2, args['layout'].height-2), dtype=object)
-        util.set_grid_mapping(args['layout'].width, args['layout'].height, args['layout'].walls)
-
-    if(options.inputModel is not None):
-        with open(options.inputModel) as json_file:
-            data = json.load(json_file)
-        args['pacman'].state_action_rewards = data
-
-    # Don't display training games
-    if 'numTrain' in agentOpts:
-        options.numQuiet = int(agentOpts['numTrain'])
-        options.numIgnore = int(agentOpts['numTrain'])
 
     # Choose a ghost agent
     ghostType = loadAgent(options.ghost, noKeyboard)
     args['ghosts'] = [ghostType( i+1 ) for i in range( options.numGhosts )]
 
     # Choose a display format
-    if options.quietGraphics:
-        import textDisplay
-        args['display'] = textDisplay.NullGraphics()
-    elif options.textGraphics:
-        import textDisplay
-        textDisplay.SLEEP_TIME = options.frameTime
-        args['display'] = textDisplay.PacmanGraphics()
-    else:
-        import graphicsDisplay
-        args['display'] = graphicsDisplay.PacmanGraphics(options.zoom, frameTime = options.frameTime)
-    args['numGames'] = options.numGames
-    args['record'] = options.record
-    args['catchExceptions'] = options.catchExceptions
-    args['timeout'] = options.timeout
-
-    # Special case: recorded games don't use the runGames method or args structure
-    if options.gameToReplay != None:
-        print 'Replaying recorded game %s.' % options.gameToReplay
-        import cPickle
-        f = open(options.gameToReplay)
-        try: recorded = cPickle.load(f)
-        finally: f.close()
-        recorded['display'] = args['display']
-        replayGame(**recorded)
-        sys.exit(0)
+    import graphicsDisplay
+    zoom = 1.0
+    frame_time = 0.1
+    args['display'] = graphicsDisplay.PacmanGraphics(zoom, frameTime = frame_time)
 
     return args
 
@@ -637,24 +570,6 @@ def loadAgent(pacman, nographics):
                 return getattr(module, pacman)
     raise Exception('The agent ' + pacman + ' is not specified in any *Agents.py.')
 
-def replayGame( layout, actions, display ):
-    import pacmanAgents, ghostAgents
-    rules = ClassicGameRules()
-    agents = [pacmanAgents.GreedyAgent()] + [ghostAgents.RandomGhost(i+1) for i in range(layout.getNumGhosts())]
-    game = rules.newGame( layout, agents[0], agents[1:], display )
-    state = game.state
-    display.initialize(state.data)
-
-    for action in actions:
-            # Execute the action
-        state = state.generateSuccessor( *action )
-        # Change the display
-        display.update( state.data )
-        # Allow for game specific conditions (winning, losing, etc.)
-        rules.process(state, game)
-
-    display.finish()
-
 def plot2d(i):
     grid = np.copy(util.max_Q_val)
     grid[grid == 0] = np.min(grid)
@@ -663,14 +578,14 @@ def plot2d(i):
     plt.imshow(grid, cmap=LinearSegmentedColormap.from_list('br',["b", "r"], N=256) , interpolation='nearest')
     plt.savefig(util.plot_path+"/"+str(i)+".png")
 
-def runGames( layout, pacman, ghosts, display, numGames, record, numTraining = 0, catchExceptions=False, timeout=30 ):
+def runGames( layout, pacman, ghosts, display, numGames, output_file, numTraining = 0, catchExceptions=False, timeout=30 ):
     import __main__
     __main__.__dict__['_display'] = display
 
     rules = ClassicGameRules(timeout)
     games = []
 
-    for i in range( numGames ):
+    for i in tqdm(range( numGames )):
         beQuiet = i < numTraining
         if beQuiet:
                 # Suppress output and graphics
@@ -678,47 +593,15 @@ def runGames( layout, pacman, ghosts, display, numGames, record, numTraining = 0
             gameDisplay = textDisplay.NullGraphics()
             rules.quiet = True
             #gameDisplay = display
-            print("Training : ", i, "/", numTraining)
-
-            if(i%500000 == 0 and len(pacman.state_action_rewards) > 1 and pacman.output_path != None):
-                pacman.saveTable()
+            #print("Training : ", i, "/", numTraining)
         else:
             pacman.epsilon_num = 0.01
-            try:
-                if(len(pacman.state_action_rewards) > 1 and pacman.output_path != None):
-                    pacman.saveTable()
-            except:
-                pass
-            gameDisplay = display
-            rules.quiet = False
-        game = rules.newGame( layout, pacman, ghosts, gameDisplay, beQuiet, catchExceptions)
+            import textDisplay
+            gameDisplay = textDisplay.NullGraphics()
+            rules.quiet = True
+        game = rules.newGame( layout, pacman, ghosts, gameDisplay, True, catchExceptions)
         game.run()
         if not beQuiet: games.append(game)
-
-        if record:
-            import time, cPickle
-            fname = ('recorded-game-%d' % (i + 1)) +  '-'.join([str(t) for t in time.localtime()[1:6]])
-            f = file(fname, 'w')
-            components = {'layout': layout, 'actions': game.moveHistory}
-            cPickle.dump(components, f)
-            f.close()
-
-        try:
-            if util.max_Q_val is not None and (i)%1000 == 0 and i!= 0:
-                plot2d(i)
-        except:
-            pass
-
-    if (numGames-numTraining) > 0:
-
-        scores = [game.state.getScore() for game in games]
-        wins = [game.state.isWin() for game in games]
-        winRate = wins.count(True)/ float(len(wins))
-        print 'Average Score:', sum(scores) / float(len(scores))
-        print 'Scores:       ', ', '.join([str(score) for score in scores])
-        print 'Win Rate:      %d/%d (%.2f)' % (wins.count(True), len(wins), winRate)
-        print 'Record:       ', ', '.join([ ['Loss', 'Win'][int(w)] for w in wins])
-
     return games
 
 if __name__ == '__main__':
@@ -733,7 +616,31 @@ if __name__ == '__main__':
     > python pacman.py --help
     """
     args = readCommand( sys.argv[1:] ) # Get game components based on input
-    runGames( **args )
+
+    best_mean_score = -999999999
+    best_index = 0
+
+    training_size = args["pacman"].get_training_space_size()
+    for i in range(0,training_size):
+        print("Training : ", i+1, "/", training_size)
+        n_training = args["pacman"].set_parameters_in_iteration(i)
+        args['numTraining'] = n_training
+        args['numGames'] = args['numTraining'] + 100
+
+        test_results = runGames( **args )
+
+        scores = np.array([game.state.getScore() for game in test_results])
+        mean_score = np.mean(scores)
+        if(mean_score > best_mean_score):
+            best_mean_score = mean_score
+            best_index = i
+
+        args["pacman"].reset_tables()
+
+    best_parameters = args["pacman"].get_parameters_in_iteration(best_index)
+    args["pacman"].write_best_parameters(best_parameters, best_mean_score, args["output_file"])
+
+
 
     # import cProfile
     # cProfile.run("runGames( **args )")
