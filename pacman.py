@@ -562,8 +562,8 @@ def readCommand( argv ):
     pacman = pacmanType(**agentOpts) # Instantiate Pacman with agentArgs
 
     args['pacman'] = pacman
+    args['output_model_path'] = options.outputModel
     if options.outputModel is not None:
-        args['pacman'].output_path = options.outputModel
         util.plot_path = options.outputPlot
         if not os.path.exists(util.plot_path):
             os.makedirs(util.plot_path)
@@ -572,9 +572,13 @@ def readCommand( argv ):
         util.set_grid_mapping(args['layout'].width, args['layout'].height, args['layout'].walls)
 
     if(options.inputModel is not None):
-        with open(options.inputModel) as json_file:
-            data = json.load(json_file)
-        args['pacman'].state_action_rewards = data
+        if(pacmanType == "SARSAAgent"):
+            #CODIGO_MATHEUS
+            print("MATHEUS_ADICIONA_O_CODIGO")
+        else:
+            with open(options.inputModel) as json_file:
+                data = json.load(json_file)
+            args['pacman'].Q = data
 
     # Don't display training games
     if 'numTrain' in agentOpts:
@@ -663,12 +667,13 @@ def plot2d(i):
     plt.imshow(grid, cmap=LinearSegmentedColormap.from_list('br',["b", "r"], N=256) , interpolation='nearest')
     plt.savefig(util.plot_path+"/"+str(i)+".png")
 
-def runGames( layout, pacman, ghosts, display, numGames, record, numTraining = 0, catchExceptions=False, timeout=30 ):
+def runGames( layout, pacman, ghosts, display, output_model_path, numGames, record, numTraining = 0, catchExceptions=False, timeout=30 ):
     import __main__
     __main__.__dict__['_display'] = display
 
     rules = ClassicGameRules(timeout)
     games = []
+    print(pacman.epsilon_num, pacman.gamma)
 
     for i in range( numGames ):
         beQuiet = i < numTraining
@@ -680,13 +685,13 @@ def runGames( layout, pacman, ghosts, display, numGames, record, numTraining = 0
             #gameDisplay = display
             print("Training : ", i, "/", numTraining)
 
-            if(i%500000 == 0 and len(pacman.state_action_rewards) > 1 and pacman.output_path != None):
-                pacman.saveTable()
+            if(i%1000000 == 0 and len(pacman.Q) > 1 and output_model_path != None):
+                pacman.saveTable(output_model_path)
         else:
             pacman.epsilon_num = 0.01
             try:
-                if(len(pacman.state_action_rewards) > 1 and pacman.output_path != None):
-                    pacman.saveTable()
+                if(len(pacman.Q) > 1 and output_model_path != None):
+                    pacman.saveTable(output_model_path)
             except:
                 pass
             gameDisplay = display
@@ -710,7 +715,6 @@ def runGames( layout, pacman, ghosts, display, numGames, record, numTraining = 0
             pass
 
     if (numGames-numTraining) > 0:
-
         scores = [game.state.getScore() for game in games]
         wins = [game.state.isWin() for game in games]
         winRate = wins.count(True)/ float(len(wins))

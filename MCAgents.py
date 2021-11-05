@@ -4,43 +4,28 @@ import util
 import json
 import numpy as np
 
-
-
-
-
 class MCAgent(Agent):
+    #CLASS CONSTRUCTOR
     def __init__(self):
         #I use the same variable to count the number of times each state_action has been selected
-        #self.state_action_rewards[state_id][action] is a list with [0] = reward, and [1] = count
-        self.state_action_rewards = dict()
-        self.output_path = None
+        #self.Q[state_id][action] is a list with [0] = reward, and [1] = count
+        self.Q = dict()
         self.episode_size = 0
         self.episode = []
 
         #index is always 0 for pacman agents
         self.index = 0
 
-        self.gamma_range = np.arange(0.1, 1.0, 0.4)
-        self.gamma_range = np.concatenate([self.gamma_range, np.arange(0.95, 1.01, 0.05)])
-
-        self.epsilon_num_range = np.arange(10,101,40)
-        self.epsilon_num_range = np.concatenate([self.epsilon_num_range, np.arange(100,1001,400)])
-        self.epsilon_num_range = np.concatenate([self.epsilon_num_range, np.arange(1000,10001,4000)])
-
-        self.training_number_range = np.array([100,1000, 10000, 100000, 500000, 1000000])
+        self.gamma_range = np.array([0.9])
+        self.epsilon_num_range = np.array([1.0, 10.0, 100.0, 1000.0])
+        self.training_number_range = np.array([1000, 5000, 10000])
 
         #Monte-carlo parameters
         self.gamma = 0.9
-        self.epsilon_num = 100.0
+        self.epsilon_num = 10.0
 
-    #Function used to save the state_action_reward table as a json file
-    def saveTable(self):
-        file_out = open(self.output_path, "w")
-
-        json.dump(self.state_action_rewards, file_out)
-
-        file_out.close()
-
+    #----------------------------------------------------------------------------
+    #Functions used for the Monte Carlo Control algorithm
     def getDistribution( self, state ):
         dist = util.Counter()
         possible_actions = state.getLegalActions( self.index )
@@ -67,14 +52,14 @@ class MCAgent(Agent):
             G = (self.gamma **c * G) + reward
             if selected not in visited_state_action[state_id]:
                 visited_state_action[state_id].append(selected)
-                if state_id not in self.state_action_rewards:
-                    self.state_action_rewards[state_id] = dict()
-                if selected not in self.state_action_rewards[state_id]:
-                    self.state_action_rewards[state_id][selected] = [0,0]
-                self.state_action_rewards[state_id][selected][1] += 1
-                alpha = (1.0/(self.state_action_rewards[state_id][selected][1]))
-                Qsa = self.state_action_rewards[state_id][selected][0]
-                self.state_action_rewards[state_id][selected][0] = Qsa + alpha * (G - Qsa)
+                if state_id not in self.Q:
+                    self.Q[state_id] = dict()
+                if selected not in self.Q[state_id]:
+                    self.Q[state_id][selected] = [0,0]
+                self.Q[state_id][selected][1] += 1
+                alpha = (1.0/(self.Q[state_id][selected][1]))
+                Qsa = self.Q[state_id][selected][0]
+                self.Q[state_id][selected][0] = Qsa + alpha * (G - Qsa)
                 if(util.max_Q_val is not None):
                     util.update_heatmap(self, state_id, selected)
         del visited_state_action
@@ -83,9 +68,9 @@ class MCAgent(Agent):
         rand = np.random.rand()
         state_id = util.get_state_id(state)
         state_count = 0
-        if state_id in self.state_action_rewards:
-            for a_ in self.state_action_rewards[state_id]:
-                state_count+=self.state_action_rewards[state_id][a_][1]
+        if state_id in self.Q:
+            for a_ in self.Q[state_id]:
+                state_count+=self.Q[state_id][a_][1]
         epsilon = self.epsilon_num/(self.epsilon_num+state_count)
         possible_actions = state.getLegalActions(self.index)
         #possible_actions.remove(Directions.STOP)
@@ -134,7 +119,7 @@ class MCAgent(Agent):
 
     def getAction(self, state):
         state_id = util.get_state_id(state)
-        action = self.egreedy_policy(state, self.state_action_rewards)
+        action = self.egreedy_policy(state, self.Q)
 
         #new_state = state.generateSuccessor(self.index, action)
 
@@ -144,17 +129,14 @@ class MCAgent(Agent):
         if self.episode_size > 0:
             self.episode[self.episode_size-1][2] = state.getScore()
 
-        if state_id not in self.state_action_rewards:
-            self.state_action_rewards[state_id] = dict()
-        if action not in self.state_action_rewards[state_id]:
-            self.state_action_rewards[state_id][action] = [0,0]
+        if state_id not in self.Q:
+            self.Q[state_id] = dict()
+        if action not in self.Q[state_id]:
+            self.Q[state_id][action] = [0,0]
 
 
-        #if(self.episode_size > 5000):
-        #    self.episode_size = 0
-        #    del self.episode
-        #    self.episode = []
-        #    state.data._lose = True
+        if(self.episode_size > 5000):
+            state.data._lose = True
 
         #if(new_state.isWin() or new_state.isLose()):
 
@@ -163,11 +145,29 @@ class MCAgent(Agent):
 
     def final(self, state):
         self.episode[self.episode_size-1][2] = state.getScore()
+        if(state.data._lose):
+            self.episode[self.episode_size-1][2] = self.episode[self.episode_size-2][2] - 500
         self.updateQ()
         self.episode_size = 0
         del self.episode
         self.episode = []
 
+    #----------------------------------------------------------------------------
+
+
+    #---------------------------------------------------------------------------
+    #Function used to save the state_action_reward table as a json file
+    def saveTable(self, output_model_path):
+        file_out = open(output_model_path, "w")
+
+        json.dump(self.Q, file_out)
+
+        file_out.close()
+    #----------------------------------------------------------------------------
+
+
+    #----------------------------------------------------------------------------
+    #Functions used for the grid search algorithm
     def get_parameters_in_iteration(self, i):
         x_size = self.epsilon_num_range.shape[0]
         y_size = self.gamma_range.shape[0]
@@ -194,8 +194,8 @@ class MCAgent(Agent):
         return x*y*z
 
     def reset_tables(self):
-        del self.state_action_rewards
-        self.state_action_rewards = dict()
+        del self.Q
+        self.Q = dict()
         self.episode_size = 0
         self.episode = []
 
@@ -218,3 +218,5 @@ class MCAgent(Agent):
         string_to_write = "Average Score : " + str(average_score) + "\n"
         output_file.write(string_to_write)
         output_file.close()
+
+    #----------------------------------------------------------------------------
