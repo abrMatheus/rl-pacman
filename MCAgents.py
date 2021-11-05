@@ -134,7 +134,6 @@ class MCAgent(Agent):
         if action not in self.Q[state_id]:
             self.Q[state_id][action] = [0,0]
 
-
         if(self.episode_size > 5000):
             state.data._lose = True
 
