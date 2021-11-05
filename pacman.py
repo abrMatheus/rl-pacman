@@ -49,6 +49,7 @@ import util, layout
 import sys, types, time, random, os
 import numpy as  np
 import json
+import pickle
 import matplotlib.pyplot as plt
 from  matplotlib.colors import LinearSegmentedColormap
 from mpl_toolkits.mplot3d import Axes3D
@@ -574,8 +575,12 @@ def readCommand( argv ):
         util.set_grid_mapping(args['layout'].width, args['layout'].height, args['layout'].walls)
 
     if(options.inputModel is not None):
-        if(pacmanType == "SARSAAgent"):
+        if(pacmanType == "SARSAAgent" or pacmanType == 'NSARSAAgent'):
             #CODIGO_MATHEUS
+            with open(options.inputModel, 'rb') as handle:
+                data = pickle.load(handle)
+            args['pacman'].Q_table = data['Q_table']
+            args['pacman'].statesL = data['statesL']
             print("MATHEUS_ADICIONA_O_CODIGO")
         else:
             with open(options.inputModel) as json_file:
@@ -686,12 +691,14 @@ def runGames( layout, pacman, ghosts, display, output_model_path, numGames, reco
             pacman.is_train = True
                 # Suppress output and graphics
             import textDisplay
+            pacman.is_train = True 
             gameDisplay = textDisplay.NullGraphics()
             rules.quiet = True
             #gameDisplay = display
             print("Training : ", i, "/", numTraining)
+
         else:
-            pacman.is_train = False
+            pacman.is_train = False 
             pacman.epsilon_num = 0.01
             try:
                 if(len(pacman.Q) > 1 and output_model_path != None):

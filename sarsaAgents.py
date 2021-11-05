@@ -9,7 +9,7 @@ import time
 class SARSAAgent(Agent):
     "Sarsa Lambda agent"
 
-    def __init__ (self, path='rl-data/',n0 =100, maxa=5000, discount_factor=0.9, Slambda=0.9):
+    def __init__ (self, n0 =0.6, maxa=5000, discount_factor=0.99, Slambda=0.7):
         self.actions = ['West', 'East','Stop', 'North', 'South']
         self.statesL = None
 
@@ -19,44 +19,30 @@ class SARSAAgent(Agent):
         self.lambd = float(Slambda)
         self.maxa  = float(maxa)
 
-        self.Training = True  if self.N0 > 0 else False
+        self.is_train = True  if self.N0 > 0 else False
 
         self.num_actions = 0
         self.total_reward = 0
         self.Ngames = 0
 
-        self.filename = os.path.join(path, 'SARSAAgent.pickle')
+        self.Q = []
 
-        if os.path.isfile(self.filename):
-            print "Loading Q_table ---------------------------------------"
-            with open(self.filename, 'rb') as handle:
-                loaddata = pickle.load(handle)
-                self.Q_table = loaddata['qtable']
-                self.statesL = loaddata['statesL']
-                self.Vmatrix = loaddata['vmatrix']
-                self.E_trace = np.zeros(self.Q_table.shape, dtype=np.float16)
-                self.Ntable  = np.zeros(self.Q_table.shape, dtype=np.int64)
-
-        else:
-            self.Q_table = None
-
-    def saveStates(self):
-        tdict = {'qtable'  : self.Q_table,
-                 'statesL' : self.statesL,
-                 'vmatrix' : self.Vmatrix}
+    def saveTable(self, filename):
+        tdict = {'qtable'  : self.Q,
+                 'statesL' : self.statesL}
         
-        with open(self.filename, 'wb') as handle:
+        with open(filename, 'wb') as handle:
             pickle.dump(tdict, handle)
 
     
     def final(self, state):
-        self.reward = self.getReward(state)
-        self.updateQ(state)
+        if self.is_train:
+            self.reward = self.getReward(state)
+            self.updateQ(state)
 
-        print '# GAME:', self.Ngames,'# Actions:', self.num_actions,'# Total Reward:', self.total_reward
+        #print '# GAME:', self.Ngames,'# Actions:', self.num_actions,'# Total Reward:', self.total_reward
         self.Ngames +=1
         self.reward=0
-        self.saveStates()
         self.last_a=None
         self.last_state = None
         self.E_trace[:] = 0
@@ -90,15 +76,14 @@ class SARSAAgent(Agent):
 
         nstates = n_positions*(2**num_ghosts)*(2**num_capsules)*(2**num_foods)
 
-        self.Q_table = np.zeros([nstates, len(self.actions)], dtype=np.float16)
+        self.Q = np.zeros([nstates, len(self.actions)], dtype=np.float16)
         self.statesL = [self.get_state_id(state)]
         self.E_trace = np.zeros([nstates, len(self.actions)], dtype=np.float16)
         self.Ntable  = np.zeros([nstates, len(self.actions)], dtype=np.int64)
-        self.Vmatrix = np.zeros([x_size, y_size])
 
     def getAction(self, state):
 
-        if self.Q_table is None:
+        if len(self.Q) <=0 :
             self.init_states(state)
 
         self.num_actions +=1
@@ -106,7 +91,7 @@ class SARSAAgent(Agent):
             state.data._lose = True
             return 'Stop'
 
-        if not self.Training: 
+        if not self.is_train: 
             # teste
             sindex = self.getTableIndex(state)
             self.best_a = self.greedyAction(state,sindex)
@@ -129,21 +114,17 @@ class SARSAAgent(Agent):
         s2index = self.getTableIndex(state)
         a2index = self.actions.index(self.best_a)
 
-        priorq   = self.Q_table[sindex, aindex]
-        td_error = self.reward + self.gamma * self.Q_table[s2index, a2index] - priorq
+        priorq   = self.Q[sindex, aindex]
+        td_error = self.reward + self.gamma * self.Q[s2index, a2index] - priorq
 
         self.E_trace[sindex, aindex] +=1
 
         self.Ntable[sindex, aindex] +=1
 
         alfa = 1./float(self.Ntable[sindex, aindex])
-        self.Q_table +=alfa*td_error*self.E_trace
+        self.Q +=alfa*td_error*self.E_trace
         self.E_trace = self.gamma * self.lambd * self.E_trace
 
-        x,y = state.getPacmanPosition()
-        currMax = self.Q_table[s2index, :].max()
-        if (currMax > self.Vmatrix[x,y]):
-            self.Vmatrix[x,y] = currMax
 
         self.total_reward += self.reward
 
@@ -165,7 +146,7 @@ class SARSAAgent(Agent):
 
 
     def greedyAction(self, state, sindex):
-        avalues = self.Q_table[sindex,:]
+        avalues = self.Q[sindex,:]
 
         legal_actions = state.getLegalActions()
         
@@ -246,7 +227,7 @@ class SARSAAgent(Agent):
 class NSARSAAgent(Agent):
     "Normal Sarsa Agent"
 
-    def __init__ (self, path='rl-data/', learning_rate=0.001, maxa=5000, discount_factor=0.9):
+    def __init__ (self, learning_rate=0.2, maxa=5000, discount_factor=0.99):
         self.actions = ['West', 'East','Stop', 'North', 'South']
         self.statesL = None
 
@@ -261,39 +242,30 @@ class NSARSAAgent(Agent):
         self.i_epslon =  1.0 if self.alfa > 0 else 0.0
         self.epslon = 0.9
 
-        self.Training = True  if self.alfa > 0 else False
+        self.is_train = True  if self.alfa > 0 else False
 
-        self.filename = os.path.join(path, 'NSARSAAgent.pickle')
         self.Ngames = 0 
 
-        if os.path.isfile(self.filename):
-            print "Loading Q_table ---------------------------------------"
-            with open(self.filename, 'rb') as handle:
-                loaddata = pickle.load(handle)
-                self.Q_table = loaddata['qtable']
-                self.statesL = loaddata['statesL'] #TODO: nao preciso
-                self.Vmatrix = loaddata['vmatrix']
+        self.Q = []
 
-        else:
-            self.Q_table = None
-
-    def saveStates(self):
-        tdict = {'qtable'  : self.Q_table,
-                 'statesL' : self.statesL,
-                 'vmatrix' : self.Vmatrix}
+    def saveTable(self, filename):
+        tdict = {'qtable'  : self.Q,
+                 'statesL' : self.statesL}
         
-        with open(self.filename, 'wb') as handle:
+        with open(filename, 'wb') as handle:
             pickle.dump(tdict, handle)
 
     
     def final(self, state):
-        self.reward = self.getReward(state)
-        self.updateQ(state)
+        
+        if self.is_train:
+            self.reward = self.getReward(state)
+            self.updateQ(state)
 
-        print '# GAME:', self.Ngames,'# Actions:', self.num_actions,'# Total Reward:', self.total_reward
+        #print '# GAME:', self.Ngames,'# Actions:', self.num_actions,'# Total Reward:', self.total_reward
         self.Ngames +=1
         self.reward=0
-        self.saveStates()
+        #self.saveStates()
         self.last_a=None
         self.last_state = None
         self.num_actions = 0
@@ -326,13 +298,12 @@ class NSARSAAgent(Agent):
 
         nstates = n_positions*(2**num_ghosts)*(2**num_capsules)*(2**num_foods)
 
-        self.Q_table = np.zeros([nstates, len(self.actions)], dtype=np.float16)
+        self.Q = np.zeros([nstates, len(self.actions)], dtype=np.float16)
         self.statesL = [self.get_state_id(state)]
-        self.Vmatrix = np.zeros([x_size, y_size])
 
     def getAction(self, state):
 
-        if self.Q_table is None:
+        if len(self.Q) <= 0 :
             self.init_states(state)
 
         self.num_actions +=1
@@ -341,7 +312,7 @@ class NSARSAAgent(Agent):
             return 'Stop'
 
 
-        if not self.Training:
+        if not self.is_train:
             sindex = self.getTableIndex(state)
             self.best_a = self.greedyAction(state,sindex)
 
@@ -369,14 +340,10 @@ class NSARSAAgent(Agent):
 
         self.total_reward += self.reward
 
-        priorq   = self.Q_table[sindex, aindex]
-        td_error = self.reward + self.gamma * self.Q_table[s2index, :].max() - priorq
+        priorq   = self.Q[sindex, aindex]
+        td_error = self.reward + self.gamma * self.Q[s2index, :].max() - priorq
 
-        self.Q_table[sindex, aindex] += self.alfa*td_error
-        x,y = state.getPacmanPosition()
-        currMax = self.Q_table[s2index, :].max()
-        if (currMax > self.Vmatrix[x,y]):
-            self.Vmatrix[x,y] = currMax
+        self.Q[sindex, aindex] += self.alfa*td_error
 
 
 
@@ -399,7 +366,7 @@ class NSARSAAgent(Agent):
 
     def greedyAction(self, state, sindex):
         
-        avalues = self.Q_table[sindex,:]
+        avalues = self.Q[sindex,:]
 
         legal_actions = state.getLegalActions()
 
