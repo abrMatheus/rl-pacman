@@ -673,7 +673,6 @@ def runGames( layout, pacman, ghosts, display, output_model_path, numGames, reco
 
     rules = ClassicGameRules(timeout)
     games = []
-    print(pacman.epsilon_num, pacman.gamma)
 
     for i in range( numGames ):
         beQuiet = i < numTraining
