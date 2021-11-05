@@ -6,7 +6,7 @@ import numpy as np
 
 class MCAgent(Agent):
     #CLASS CONSTRUCTOR
-    def __init__(self):
+    def __init__(self, gamma = 0.9, epsilon_num = 10.0):
         #I use the same variable to count the number of times each state_action has been selected
         #self.Q[state_id][action] is a list with [0] = reward, and [1] = count
         self.Q = dict()
@@ -18,12 +18,13 @@ class MCAgent(Agent):
 
         self.gamma_range = np.array([0.9])
         self.epsilon_num_range = np.array([1.0, 10.0, 100.0, 1000.0])
-        self.training_number_range = np.array([1000, 5000, 10000])
+        self.training_number_range = np.array([1000,10000,50000])
         self.last_state = None
+        self.is_train = False
 
         #Monte-carlo parameters
-        self.gamma = 0.9
-        self.epsilon_num = 10.0
+        self.gamma = gamma
+        self.epsilon_num = epsilon_num
 
     #----------------------------------------------------------------------------
     #Functions used for the Monte Carlo Control algorithm
@@ -57,7 +58,7 @@ class MCAgent(Agent):
                 Qsa = self.Q[state_id][selected][0]
                 self.Q[state_id][selected][0] = Qsa + alpha * (G - Qsa)
                 if(util.max_Q_val is not None):
-                    util.update_heatmap(self, state_id, selected)
+                    util.update_heatmap(state_id, selected, self.Q[state_id][selected][0])
         del visited_state_action
 
     def egreedy_policy(self, state, policy):
@@ -143,7 +144,8 @@ class MCAgent(Agent):
         self.episode[self.episode_size-1][2] = state.getScore()
         if(state.data._lose):
             self.episode[self.episode_size-1][2] = self.episode[self.episode_size-2][2] - 500
-        self.updateQ()
+        if(self.is_train):
+            self.updateQ()
         self.episode_size = 0
         del self.episode
         self.episode = []
