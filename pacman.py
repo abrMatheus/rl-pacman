@@ -528,7 +528,7 @@ def readCommand( argv ):
     parser.add_option('-o','--outputModel',dest='outputModel',
                       help='JSON file path to save trained model', default=None)
     parser.add_option('--outputPlot',dest='outputPlot',
-                      help='Path to save the plotted function', default="plots/")
+                      help='Path to save the plotted function', default=None)
     parser.add_option('-i','--inputModel',dest='inputModel',
                       help='JSON file with pre-trained model', default=None)
     parser.add_option('-x', '--numTraining', dest='numTraining', type='int',
@@ -539,6 +539,8 @@ def readCommand( argv ):
                       help='Turns on exception handling and timeouts during games', default=False)
     parser.add_option('--timeout', dest='timeout', type='int',
                       help=default('Maximum length of time an agent can spend computing in a single game'), default=30)
+    parser.add_option('-s', dest='scores_log',
+                      help=default('File to log the training scores'), default=None)
 
     options, otherjunk = parser.parse_args(argv)
     if len(otherjunk) != 0:
@@ -563,7 +565,7 @@ def readCommand( argv ):
 
     args['pacman'] = pacman
     args['output_model_path'] = options.outputModel
-    if options.outputModel is not None:
+    if options.outputPlot is not None:
         util.plot_path = options.outputPlot
         if not os.path.exists(util.plot_path):
             os.makedirs(util.plot_path)
@@ -604,6 +606,7 @@ def readCommand( argv ):
     args['record'] = options.record
     args['catchExceptions'] = options.catchExceptions
     args['timeout'] = options.timeout
+    args['scores_log'] = options.scores_log
 
     # Special case: recorded games don't use the runGames method or args structure
     if options.gameToReplay != None:
@@ -667,26 +670,28 @@ def plot2d(i):
     plt.imshow(grid, cmap=LinearSegmentedColormap.from_list('br',["b", "r"], N=256) , interpolation='nearest')
     plt.savefig(util.plot_path+"/"+str(i)+".png")
 
-def runGames( layout, pacman, ghosts, display, output_model_path, numGames, record, numTraining = 0, catchExceptions=False, timeout=30 ):
+def runGames( layout, pacman, ghosts, display, output_model_path, numGames, record, numTraining = 0, catchExceptions=False, timeout=30, scores_log=None ):
     import __main__
     __main__.__dict__['_display'] = display
 
     rules = ClassicGameRules(timeout)
     games = []
 
+    if scores_log is not None:
+        training_scores = []
+
     for i in range( numGames ):
         beQuiet = i < numTraining
         if beQuiet:
+            pacman.is_train = True
                 # Suppress output and graphics
             import textDisplay
             gameDisplay = textDisplay.NullGraphics()
             rules.quiet = True
             #gameDisplay = display
             print("Training : ", i, "/", numTraining)
-
-            if(i%1000000 == 0 and len(pacman.Q) > 1 and output_model_path != None):
-                pacman.saveTable(output_model_path)
         else:
+            pacman.is_train = False
             pacman.epsilon_num = 0.01
             try:
                 if(len(pacman.Q) > 1 and output_model_path != None):
@@ -707,6 +712,10 @@ def runGames( layout, pacman, ghosts, display, output_model_path, numGames, reco
             cPickle.dump(components, f)
             f.close()
 
+        if scores_log is not None:
+            if beQuiet:
+                training_scores.append(game.state.getScore())
+
         try:
             if util.max_Q_val is not None and (i)%1000 == 0 and i!= 0:
                 plot2d(i)
@@ -721,6 +730,13 @@ def runGames( layout, pacman, ghosts, display, output_model_path, numGames, reco
         print 'Scores:       ', ', '.join([str(score) for score in scores])
         print 'Win Rate:      %d/%d (%.2f)' % (wins.count(True), len(wins), winRate)
         print 'Record:       ', ', '.join([ ['Loss', 'Win'][int(w)] for w in wins])
+
+    if scores_log is not None:
+        log_file = open(scores_log, "w")
+
+        for s in training_scores:
+            log_file.write(str(s))
+        log_file.close()
 
     return games
 

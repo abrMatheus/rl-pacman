@@ -19,6 +19,7 @@ class MCAgent(Agent):
         self.gamma_range = np.array([0.9])
         self.epsilon_num_range = np.array([1.0, 10.0, 100.0, 1000.0])
         self.training_number_range = np.array([1000, 5000, 10000])
+        self.last_state = None
 
         #Monte-carlo parameters
         self.gamma = 0.9
@@ -29,11 +30,6 @@ class MCAgent(Agent):
     def getDistribution( self, state ):
         dist = util.Counter()
         possible_actions = state.getLegalActions( self.index )
-        #if Directions.STOP in possible_actions:
-        #    possible_actions.remove( Directions.STOP )
-        #if len(possible_actions) > 1:
-        #    if Directions.REVERSE[state.getPacmanState().configuration.direction] in possible_actions:
-        #        possible_actions.remove(Directions.REVERSE[state.getPacmanState().configuration.direction])
         for a in possible_actions: dist[a] = 1.0
         dist.normalize()
         return dist
@@ -127,7 +123,7 @@ class MCAgent(Agent):
         self.episode.append([state_id, action, 0])
         #print(self.episode)
         if self.episode_size > 0:
-            self.episode[self.episode_size-1][2] = state.getScore()
+            self.episode[self.episode_size-1][2] = self.episode[self.episode_size-2][2] + self.getReward(state)
 
         if state_id not in self.Q:
             self.Q[state_id] = dict()
@@ -140,6 +136,7 @@ class MCAgent(Agent):
         #if(new_state.isWin() or new_state.isLose()):
 
         self.episode_size+=1
+        self.last_state = state
         return action
 
     def final(self, state):
@@ -197,6 +194,18 @@ class MCAgent(Agent):
         self.Q = dict()
         self.episode_size = 0
         self.episode = []
+
+    def getReward(self, state):
+        reward = -1
+
+        if state.getNumFood() < self.last_state.getNumFood():
+            reward += 10
+        if state.isWin():
+            reward += 5000
+        elif state.isLose():
+            reward += -500
+
+        return reward
 
     def write_best_parameters(self, best_parameters, average_score, output_file_path):
         best_epsilon = best_parameters[0]

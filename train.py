@@ -698,12 +698,9 @@ if __name__ == '__main__':
 
         scores = np.array([game.state.getScore() for game in test_results])
         mean_score = np.mean(scores)
-        print(args["pacman"].get_parameters_in_iteration(i), mean_score)
         if(mean_score > best_mean_score):
             best_mean_score = mean_score
             best_index = i
-            best_parameters = args["pacman"].get_parameters_in_iteration(best_index)
-            args["pacman"].write_best_parameters(best_parameters, best_mean_score, args["output_file"])
 
         args["pacman"].reset_tables()
 

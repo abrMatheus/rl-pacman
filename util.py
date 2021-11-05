@@ -706,23 +706,14 @@ def get_position_by_id(state_id):
 
         return (x,y)
 
-def update_heatmap(agent, state_id, action):
+def update_heatmap(state_id, action, Q_val):
         x,y = get_position_by_id(state_id)
         x = x-1 #To account for walls in the grid limit
         y = y-1 #To account for walls in the grid limit
-        if type(agent.Q[state_id][action]) == list:
-            if agent.Q[state_id][action][0] > max_Q_val[x][y] \
-                    or max_Q_val[x][y] == 0 or max_Q_state[x][y] == None \
-                    or (max_Q_state[x][y][0] == state_id and max_Q_state[x][y][1] == action):
-                max_Q_state[x][y] = ["",""]
-                max_Q_state[x][y][0] = state_id
-                max_Q_state[x][y][1] = action
-                max_Q_val[x][y] = agent.Q[state_id][action][0]
-        else:
-            if agent.Q[state_id][action] > max_Q_val[x][y] \
-                    or max_Q_val[x][y] == 0 or max_Q_state[x][y] == None \
-                    or (max_Q_state[x][y] == state_id and max_Q_state[x][y][1] == action):
-                max_Q_state[x][y] = ["",""]
-                max_Q_state[x][y][0] = state_id
-                max_Q_state[x][y][1] = action
-                max_Q_val[x][y] = agent.Q[state_id][action]
+        if Q_val > max_Q_val[x][y] \
+                or max_Q_val[x][y] == 0 or max_Q_state[x][y] == None \
+                or (max_Q_state[x][y][0] == state_id and max_Q_state[x][y][1] == action):
+            max_Q_state[x][y] = ["",""]
+            max_Q_state[x][y][0] = state_id
+            max_Q_state[x][y][1] = action
+            max_Q_val[x][y] = Q_val
