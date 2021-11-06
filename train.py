@@ -53,6 +53,7 @@ import matplotlib.pyplot as plt
 from  matplotlib.colors import LinearSegmentedColormap
 from mpl_toolkits.mplot3d import Axes3D
 from tqdm import tqdm
+import pandas as pd
 
 ###################################################
 # YOUR INTERFACE TO THE PACMAN WORLD: A GameState #
@@ -527,7 +528,7 @@ def readCommand( argv ):
     parser.add_option('-a','--agentArgs',dest='agentArgs',
                       help='Comma separated values sent to agent. e.g. "opt1=val1,opt2,opt3=val3"')
     parser.add_option('-o','--outputFile',dest='outputFile',
-                      help='Txt file path to save the optimum parameters', default="parameters.txt")
+                      help='CSV file path to save the optimum parameters', default="parameters.csv")
     parser.add_option('-x', '--numTraining', dest='numTraining', type='int',
                       help=default('How many episodes are training (suppresses output)'), default=0)
     parser.add_option('--frameTime', dest='frameTime', type='float',
@@ -687,6 +688,12 @@ if __name__ == '__main__':
     best_mean_score = -999999999
     best_index = 0
 
+    params = args["pacman"].get_param_names()
+
+    params.append("Score")
+
+    df = pd.DataFrame(columns=params)
+
     training_size = args["pacman"].get_training_space_size()
     for i in range(0,training_size):
         print("Training : ", i+1, "/", training_size)
@@ -702,7 +709,13 @@ if __name__ == '__main__':
             best_mean_score = mean_score
             best_index = i
 
+        params_i = list(args["pacman"].get_parameters_in_iteration(i))
+
+        df.loc[i] = params_i + [mean_score]
+
         args["pacman"].reset_tables()
 
     best_parameters = args["pacman"].get_parameters_in_iteration(best_index)
-    args["pacman"].write_best_parameters(best_parameters, best_mean_score, args["output_file"])
+    args["pacman"].write_best_parameters(best_parameters, best_mean_score)
+
+    df.to_csv(args["output_file"])

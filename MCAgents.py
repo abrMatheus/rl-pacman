@@ -209,7 +209,7 @@ class MCAgent(Agent):
 
         return reward
 
-    def write_best_parameters(self, best_parameters, average_score, output_file_path):
+    def write_best_parameters(self, best_parameters, average_score):
         best_epsilon = best_parameters[0]
         best_gamma = best_parameters[1]
         best_n_training = best_parameters[2]
@@ -218,15 +218,6 @@ class MCAgent(Agent):
         print("N_training : ", best_n_training)
         print("Average Score : ", average_score)
 
-        output_file=open(output_file_path,mode="w")
-        string_to_write = "Epsilon : " + str(best_epsilon) + "\n"
-        output_file.write(string_to_write)
-        string_to_write = "Gamma : " + str(best_gamma) + "\n"
-        output_file.write(string_to_write)
-        string_to_write = "N_training : " + str(best_n_training) + "\n"
-        output_file.write(string_to_write)
-        string_to_write = "Average Score : " + str(average_score) + "\n"
-        output_file.write(string_to_write)
-        output_file.close()
-
+    def get_param_names(self):
+        return ['Epsilon', 'Gamma', 'N']
     #----------------------------------------------------------------------------

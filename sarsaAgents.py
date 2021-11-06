@@ -412,6 +412,9 @@ class NSARSAAgent(Agent):
 
         return self.alfa_num_array[x], self.gamma_range[y], self.training_number_range[z]
 
+    def get_param_names(self):
+        return ['Alfa', 'Gamma', 'N']
+
     def set_parameters_in_iteration(self, i):
         x, y, z = self.get_parameters_in_iteration(i)
         self.alfa = x
@@ -431,7 +434,7 @@ class NSARSAAgent(Agent):
         self.episode_size = 0
         self.episode = []
 
-    def write_best_parameters(self, best_parameters, average_score, output_file_path):
+    def write_best_parameters(self, best_parameters, average_score):
         best_alfa = best_parameters[0]
         best_gamma = best_parameters[1]
         best_n_training = best_parameters[2]
@@ -439,16 +442,5 @@ class NSARSAAgent(Agent):
         print("Gamma : ", best_gamma)
         print("N_training : ", best_n_training)
         print("Average Score : ", average_score)
-
-        output_file=open(output_file_path,mode="w")
-        string_to_write = "Alfa : " + str(best_alfa) + "\n"
-        output_file.write(string_to_write)
-        string_to_write = "Gamma : " + str(best_gamma) + "\n"
-        output_file.write(string_to_write)
-        string_to_write = "N_training : " + str(best_n_training) + "\n"
-        output_file.write(string_to_write)
-        string_to_write = "Average Score : " + str(average_score) + "\n"
-        output_file.write(string_to_write)
-        output_file.close()
 
     #----------------------------------------------------------------------------
