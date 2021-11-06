@@ -726,6 +726,8 @@ def runGames( layout, pacman, ghosts, display, output_model_path, numGames, reco
         try:
             if util.max_Q_val is not None and (i)%1000 == 0 and i!= 0:
                 plot2d(i)
+            if util.max_Q_val is not None and (i)==(numTraining-1):
+                plot2d('last')
         except:
             pass
 

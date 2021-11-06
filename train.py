@@ -648,14 +648,14 @@ def runGames( layout, pacman, ghosts, display, numGames, output_file, record, nu
     rules = ClassicGameRules(timeout)
     games = []
 
-    print(pacman.epsilon_num, pacman.gamma)
+    pacman.is_train = True
     beQuiet = True
     for i in tqdm(range( numGames )):
         import textDisplay
         gameDisplay = textDisplay.NullGraphics()
         rules.quiet = True
         if i >= numTraining:
-             pacman.epsilon_num = 0.01
+             pacman.is_train = False
 
         game = rules.newGame( layout, pacman, ghosts, gameDisplay, beQuiet, catchExceptions)
         game.run()

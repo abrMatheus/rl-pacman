@@ -4,7 +4,7 @@ import numpy as np
 import pickle
 import os
 import random
-import time
+import util
 
 class SARSAAgent(Agent):
     "Sarsa Lambda agent"
@@ -26,6 +26,10 @@ class SARSAAgent(Agent):
         self.Ngames = 0
 
         self.Q = []
+
+        self.gamma_range = np.array([0.9])
+        self.alfa_range = np.array([0.1, 0.2])
+        self.training_number_range = np.array([200])
 
     def saveTable(self, filename):
         tdict = {'qtable'  : self.Q,
@@ -52,7 +56,7 @@ class SARSAAgent(Agent):
 
 
     def getTableIndex(self, state):
-        uuid = self.get_state_id(state)
+        uuid = util.get_state_id(state)
         if not uuid in self.statesL:
             self.statesL.append(uuid)
 
@@ -77,7 +81,7 @@ class SARSAAgent(Agent):
         nstates = n_positions*(2**num_ghosts)*(2**num_capsules)*(2**num_foods)
 
         self.Q = np.zeros([nstates, len(self.actions)], dtype=np.float16)
-        self.statesL = [self.get_state_id(state)]
+        self.statesL = [util.get_state_id(state)]
         self.E_trace = np.zeros([nstates, len(self.actions)], dtype=np.float16)
         self.Ntable  = np.zeros([nstates, len(self.actions)], dtype=np.int64)
 
@@ -127,6 +131,10 @@ class SARSAAgent(Agent):
 
 
         self.total_reward += self.reward
+
+        if(util.max_Q_val is not None):
+            state_id = util.get_state_id(state)
+            util.update_heatmap(state_id, self.last_a, self.Q[sindex][aindex])
 
 
     def getReward(self, state):
@@ -191,38 +199,6 @@ class SARSAAgent(Agent):
         return action
 
 
-    def get_state_id(self, state):
-        ghosts_list = state.getGhostPositions()
-        ghosts = state.getGhostStates()
-        scared_list = []
-        for g in ghosts:
-            if g.scaredTimer > 0:
-                position = g.getPosition()
-                scared_list.append(position)
-                ghosts_list.remove(position)
-        food_list = state.getFood()
-        pacman_position = state.getPacmanPosition()
-        walls = state.getWalls()
-        capsule_list = state.getCapsules()
-
-        x_size = food_list.width
-        y_size = food_list.height
-
-        uuid = ""
-        for i in range(x_size):
-            for j in range(y_size):
-                if(not walls[i][j]):
-
-                    cell_val = int(food_list[i][j]) + 2*int( (i,j) in ghosts_list) + int(22 * ((i,j) == pacman_position)) + (23 * int( (i,j) in scared_list)) + (2**4 * int( (i,j) in capsule_list))
-                    uuid += str(cell_val)
-        return uuid
-
-
-
-
-
-
-
 
 class NSARSAAgent(Agent):
     "Normal Sarsa Agent"
@@ -247,6 +223,11 @@ class NSARSAAgent(Agent):
         self.Ngames = 0 
 
         self.Q = []
+
+
+        self.gamma_range          = np.array([0.9])
+        self.alfa_num_array       = np.array([0.1, 0.2])
+        self.training_number_range  = np.array([1000]) 
 
     def saveTable(self, filename):
         tdict = {'qtable'  : self.Q,
@@ -274,7 +255,7 @@ class NSARSAAgent(Agent):
 
 
     def getTableIndex(self, state):
-        uuid = self.get_state_id(state)
+        uuid = util.get_state_id(state)
         if not uuid in self.statesL:
             self.statesL.append(uuid)
 
@@ -299,7 +280,7 @@ class NSARSAAgent(Agent):
         nstates = n_positions*(2**num_ghosts)*(2**num_capsules)*(2**num_foods)
 
         self.Q = np.zeros([nstates, len(self.actions)], dtype=np.float16)
-        self.statesL = [self.get_state_id(state)]
+        self.statesL = [util.get_state_id(state)]
 
     def getAction(self, state):
 
@@ -344,6 +325,10 @@ class NSARSAAgent(Agent):
         td_error = self.reward + self.gamma * self.Q[s2index, :].max() - priorq
 
         self.Q[sindex, aindex] += self.alfa*td_error
+
+        if(util.max_Q_val is not None):
+            state_id = util.get_state_id(state)
+            util.update_heatmap(state_id, self.last_a, self.Q[sindex][aindex])
 
 
 
@@ -407,28 +392,63 @@ class NSARSAAgent(Agent):
         return action
 
 
-    def get_state_id(self, state):
-        ghosts_list = state.getGhostPositions()
-        ghosts = state.getGhostStates()
-        scared_list = []
-        for g in ghosts:
-            if g.scaredTimer > 0:
-                position = g.getPosition()
-                scared_list.append(position)
-                ghosts_list.remove(position)
-        food_list = state.getFood()
-        pacman_position = state.getPacmanPosition()
-        walls = state.getWalls()
-        capsule_list = state.getCapsules()
+    #----------------------------------------------------------------------------
 
-        x_size = food_list.width
-        y_size = food_list.height
 
-        uuid = ""
-        for i in range(x_size):
-            for j in range(y_size):
-                if(not walls[i][j]):
+    # self.gamma_range          = np.array([0.9])
+    # self.alfa_num_array       = np.array([0.1, 0.2])
+    # self.trainning_number_range  = np.array([1000]) 
 
-                    cell_val = int(food_list[i][j]) + 2*int( (i,j) in ghosts_list) + int(22 * ((i,j) == pacman_position)) + (23 * int( (i,j) in scared_list)) + (2**4 * int( (i,j) in capsule_list))
-                    uuid += str(cell_val)
-        return uuid
+
+    #Functions used for the grid search algorithm
+    def get_parameters_in_iteration(self, i):
+        x_size = self.alfa_num_array.shape[0]
+        y_size = self.gamma_range.shape[0]
+        z_size = self.training_number_range.shape[0]
+
+        z = i%z_size
+        y = (i//z_size)%y_size
+        x = i//(y_size*z_size)%x_size
+
+        return self.alfa_num_array[x], self.gamma_range[y], self.training_number_range[z]
+
+    def set_parameters_in_iteration(self, i):
+        x, y, z = self.get_parameters_in_iteration(i)
+        self.alfa = x
+        self.gamma = y
+
+        return z
+
+    def get_training_space_size(self):
+        x = self.alfa_num_array.shape[0]
+        y = self.gamma_range.shape[0]
+        z = self.training_number_range.shape[0]
+
+        return x*y*z
+
+    def reset_tables(self):
+        self.Q[:] = 0
+        self.episode_size = 0
+        self.episode = []
+
+    def write_best_parameters(self, best_parameters, average_score, output_file_path):
+        best_alfa = best_parameters[0]
+        best_gamma = best_parameters[1]
+        best_n_training = best_parameters[2]
+        print("Alfa : ", best_alfa)
+        print("Gamma : ", best_gamma)
+        print("N_training : ", best_n_training)
+        print("Average Score : ", average_score)
+
+        output_file=open(output_file_path,mode="w")
+        string_to_write = "Alfa : " + str(best_alfa) + "\n"
+        output_file.write(string_to_write)
+        string_to_write = "Gamma : " + str(best_gamma) + "\n"
+        output_file.write(string_to_write)
+        string_to_write = "N_training : " + str(best_n_training) + "\n"
+        output_file.write(string_to_write)
+        string_to_write = "Average Score : " + str(average_score) + "\n"
+        output_file.write(string_to_write)
+        output_file.close()
+
+    #----------------------------------------------------------------------------
