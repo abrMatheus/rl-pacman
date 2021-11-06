@@ -718,4 +718,4 @@ if __name__ == '__main__':
     best_parameters = args["pacman"].get_parameters_in_iteration(best_index)
     args["pacman"].write_best_parameters(best_parameters, best_mean_score)
 
-    df.to_csv(args["output_file"])
+    df.to_csv(args["output_file"], index = False)
