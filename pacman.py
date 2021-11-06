@@ -53,6 +53,7 @@ import pickle
 import matplotlib.pyplot as plt
 from  matplotlib.colors import LinearSegmentedColormap
 from mpl_toolkits.mplot3d import Axes3D
+import seaborn as sns
 
 ###################################################
 # YOUR INTERFACE TO THE PACMAN WORLD: A GameState #
@@ -575,13 +576,13 @@ def readCommand( argv ):
         util.set_grid_mapping(args['layout'].width, args['layout'].height, args['layout'].walls)
 
     if(options.inputModel is not None):
-        if(pacmanType == "SARSAAgent" or pacmanType == 'NSARSAAgent'):
-            #CODIGO_MATHEUS
+        if(options.pacman == "SARSAAgent"):
             with open(options.inputModel, 'rb') as handle:
                 data = pickle.load(handle)
-            args['pacman'].Q_table = data['Q_table']
+            args['pacman'].Q = data['qtable']
             args['pacman'].statesL = data['statesL']
-            print("MATHEUS_ADICIONA_O_CODIGO")
+            args['pacman'].E_trace = np.zeros(data['qtable'].shape,  dtype=np.float16)
+            args['pacman'].Ntable = np.zeros(data['qtable'].shape,  dtype=np.int64)
         else:
             with open(options.inputModel) as json_file:
                 data = json.load(json_file)
@@ -624,6 +625,7 @@ def readCommand( argv ):
         replayGame(**recorded)
         sys.exit(0)
 
+    args['pacman_name'] = options.pacman
     return args
 
 def loadAgent(pacman, nographics):
@@ -667,15 +669,19 @@ def replayGame( layout, actions, display ):
 
     display.finish()
 
-def plot2d(i):
+def plot2d(i, agentname = ''):
     grid = np.copy(util.max_Q_val)
     grid[grid == 0] = np.min(grid)
     grid =  ((grid - np.min(grid)) / (np.max(grid) - np.min(grid)))
     grid = np.flip(grid.T, 0)
-    plt.imshow(grid, cmap=LinearSegmentedColormap.from_list('br',["b", "r"], N=256) , interpolation='nearest')
+    plt.figure()
+    sns.heatmap(grid)
+    title = "Heatmap of " + agentname + " " + str(i) + " episode"
+    plt.title(title)
     plt.savefig(util.plot_path+"/"+str(i)+".png")
+    plt.clf()
 
-def runGames( layout, pacman, ghosts, display, output_model_path, numGames, record, numTraining = 0, catchExceptions=False, timeout=30, scores_log=None ):
+def runGames( layout, pacman, ghosts, display, output_model_path, numGames, record, numTraining = 0, catchExceptions=False, timeout=30, scores_log=None, pacman_name=''):
     import __main__
     __main__.__dict__['_display'] = display
 
@@ -725,9 +731,9 @@ def runGames( layout, pacman, ghosts, display, output_model_path, numGames, reco
 
         try:
             if util.max_Q_val is not None and (i)%1000 == 0 and i!= 0:
-                plot2d(i)
+                plot2d(i, pacman_name)
             if util.max_Q_val is not None and (i)==(numTraining-1):
-                plot2d('last')
+                plot2d('final', pacman_name)
         except:
             pass
 
