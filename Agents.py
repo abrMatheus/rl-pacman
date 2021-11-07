@@ -18,3 +18,9 @@ class DumbAgent(Agent):
             print "Going West."
             return Directions.STOP
 
+class VeryDumbAgent(Agent):
+    "An agent that goes West until it can't."
+
+    def getAction(self, state):
+
+        return 'Stop'
