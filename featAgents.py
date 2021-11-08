@@ -10,6 +10,7 @@ from feat_utils import NFEATURES, computeDistances, filterDist
 
 # python pacman.py -l customMaze -p FeatSARSAAgent -g PatrolGhost -n 101 -x 100 -a alfa=0.0001,discount_factor=0.9,Slambda=0.0
 
+# python pacman.py -l customMaze -p FeatSARSAAgent -g PatrolGhost -n 201 -x 200 -a alfa=0.0001,discount_factor=0.9,epsilon=0.4,Slambda=0.1 -q
 
 class FeatSARSAAgent(Agent):
     "Function approximation SARSA"
@@ -96,8 +97,13 @@ class FeatSARSAAgent(Agent):
         
         td_error = self.reward + self.discount_factor*currQ - oldQ
 
+        self.ztrace = self.discount_factor*self.lambd*self.ztrace
+        temp_sum = (self.ztrace*self.curr_feat).sum()
+        self.ztrace += (1 - self.alfa*self.discount_factor*self.lambd*temp_sum)*self.curr_feat
+        
+
         #self.weights +=  self.alfa*( (td_error - oldQ)*curr_feat)
-        self.weights += self.alfa * td_error * self.curr_feat
+        self.weights += (self.alfa * td_error * self.curr_feat)*self.ztrace - self.alfa*(currQ-oldQ)*self.curr_feat
 
         self.total_reward += self.reward
 
