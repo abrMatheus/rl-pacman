@@ -13,7 +13,7 @@ from feat_utils import NFEATURES, computeDistances, filterDist
 
 class FeatSARSAAgent(Agent):
     "Function approximation SARSA"
-    def __init__ (self, alfa=0.01, maxa=5000, discount_factor=0.9, Slambda=0.1):
+    def __init__ (self, alfa=0.01, maxa=5000, discount_factor=0.9, Slambda=0.1, epsilon=0.1):
 
         self.directions = (Directions.NORTH, Directions.SOUTH, Directions.EAST, Directions.WEST) #, Directions.STOP)
         
@@ -22,8 +22,8 @@ class FeatSARSAAgent(Agent):
         self.alfa = float(alfa)
         self.lambd = float(Slambda)
 
-        self.i_epslon = 1 if self.alfa > 0 else 0.0
-        self.epslon   = self.i_epslon
+        #self.i_epsilon = 1 if self.alfa > 0 else 0.0
+        self.epsilon   = float(epsilon)
 
         self.last_state = None
         self.is_train = True
@@ -51,7 +51,7 @@ class FeatSARSAAgent(Agent):
         best_a, currQ = self.greedyAction(state)
         self.updateWeights(state, Qvalue=currQ, terminal=True)
 
-        print '# Actions:', self.num_actions,'# Total Reward:', self.total_reward, "e", self.epslon
+        print '# Actions:', self.num_actions,'# Total Reward:', self.total_reward, "e", self.epsilon
         self.num_actions = 0
         self.total_reward = 0
         self.reward=0
@@ -141,7 +141,7 @@ class FeatSARSAAgent(Agent):
     def egreedyAction(self, state):
         p = random.random()
 
-        if p > self.epslon:
+        if p > self.epsilon:
             action, score =  self.greedyAction(state)
             
         else:
@@ -154,8 +154,8 @@ class FeatSARSAAgent(Agent):
             score = self.computeScoreFromDist(dists)
 
 
-        self.epslon = self.i_epslon/(.2*self.ngames+1)
-        #self.epslon  = self.i_epslon/np.log(self.time+0.1)
+        #self.epsilon = self.i_epsilon/(.2*self.ngames+1)
+        #self.epsilon  = self.i_epsilon/np.log(self.time+0.1)
         return action, score
 
 
