@@ -594,6 +594,13 @@ def readCommand( argv ):
                 data = json.load(json_file)
             args['pacman'].Q_A = data['Q_A']
             args['pacman'].Q_B = data['Q_B']
+
+        elif(options.pacman == "FeatSARSAAgent" or options.pacman == "FeatQLAgent"):
+            with open(options.inputModel, 'rb') as handle:
+                data = pickle.load(handle)
+            args['pacman'].weights = data['weights']
+            if (options.pacman == "FeatSARSAAgent"):
+                args['pacman'].ztrace = np.zeros(args['pacman'].weights.shape, dtype=np.float16)
         else:
             with open(options.inputModel) as json_file:
                 data = json.load(json_file)
