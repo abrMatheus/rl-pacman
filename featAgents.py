@@ -49,7 +49,7 @@ class FeatSARSAAgent(Agent):
             self.reward = 5000
         
         best_a, currQ = self.greedyAction(state)
-        self.updateWeights(state, Qvalue=currQ, terminal=True)
+        self.updateWeights(state, terminal=True)
 
         print '# Actions:', self.num_actions,'# Total Reward:', self.total_reward, "e", self.epsilon
         self.num_actions = 0
@@ -76,7 +76,7 @@ class FeatSARSAAgent(Agent):
         else:
             self.best_a, currQ = self.egreedyAction(state)
             self.reward = self.getReward(state)
-            self.updateWeights(state, currQ)
+            self.updateWeights(state)
 
 
         self.last_state = state
@@ -85,7 +85,7 @@ class FeatSARSAAgent(Agent):
         return self.best_a
     
 
-    def updateWeights(self, state,  Qvalue, terminal=False):
+    def updateWeights(self, state, terminal=False):
 
         oldQ = self.computeScoreFromFeat(self.last_feat)
 
@@ -198,3 +198,53 @@ class FeatSARSAAgent(Agent):
         
         features = features/np.abs(features).sum()                        #normalize features 
         return features
+
+
+#python pacman.py -l customMaze -p FeatQLAgent -g PatrolGhost -n 201 -x 200 -a alfa=0.0001,discount_factor=0.9,epsilon=0.3 -q
+class FeatQLAgent(FeatSARSAAgent):
+    "Function approximation SARSA"
+    def __init__ (self, alfa=0.01, maxa=5000, discount_factor=0.9, epsilon=0.1):
+
+        self.directions = (Directions.NORTH, Directions.SOUTH, Directions.EAST, Directions.WEST) #, Directions.STOP)
+        
+
+        self.discount_factor = float(discount_factor)
+        self.alfa = float(alfa)
+
+        #self.i_epsilon = 1 if self.alfa > 0 else 0.0
+        self.epsilon   = float(epsilon)
+
+        self.last_state = None
+        self.is_train = True
+        self.total_reward = 0
+        self.num_actions = 0
+        self.ngames = 0
+
+        self.last_feat = None
+
+        #main weights
+        self.weights  = None
+    
+
+    def init_weights(self):
+        self.weights = np.zeros(NFEATURES+1)
+        #self.weights  = np.random.randn(NFEATURES+1)
+
+    def updateWeights(self, state, terminal=False):
+
+        oldQ = self.computeScoreFromFeat(self.last_feat)
+
+        dists = computeDistances(state, state.getNumFood(), self.directions)
+        dists = filterDist(dists)
+        self.curr_feat = self.featArray(dists)
+        #currQ = self.computeScoreFromFeat(self.curr_feat)
+
+        ###get the best score (or currQ)
+        _, currQ = self.greedyAction(state)
+        
+        td_error = self.reward + self.discount_factor*currQ - oldQ
+
+        #self.weights +=  self.alfa*( (td_error - oldQ)*curr_feat)
+        self.weights += self.alfa * td_error * self.curr_feat
+
+        self.total_reward += self.reward
