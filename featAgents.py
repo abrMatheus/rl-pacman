@@ -20,7 +20,7 @@ e_range       = np.array([0.1, 0.3, 0.4])
 
 class FeatSARSAAgent(Agent):
     "Function approximation SARSA"
-    def __init__ (self, alfa=0.01, maxa=1000, discount_factor=0.9, Slambda=0.1, epsilon=0.1):
+    def __init__ (self, alfa=0.01, maxa=1000, discount_factor=0.9, Slambda=0.1, epsilon=0.1, log_name=None):
 
         self.directions = (Directions.NORTH, Directions.SOUTH, Directions.EAST, Directions.WEST) #, Directions.STOP)
         
@@ -51,6 +51,23 @@ class FeatSARSAAgent(Agent):
         self.training_number_range = training_range
         self.alfa_num_range = alfa_range
 
+        self.log_name = log_name
+        self.rlog = []
+        self.slog = []
+
+
+    def update_log(self, state):
+            self.rlog.append(self.total_reward)
+            self.slog.append(state.getScore())
+
+            tmp = {
+                'score' : self.slog,
+                'reward': self.rlog
+            }
+
+            with open(self.log_name, "wb") as handle:
+                pickle.dump(tmp, handle)
+
     def init_weights(self):
 
         self.weights = np.zeros(NFEATURES+1)
@@ -58,7 +75,6 @@ class FeatSARSAAgent(Agent):
         self.Q = self.weights
 
     def saveTable(self, filename):
-        print("savetable qlearning")
         tdict = {'weights' : self.weights}
 
         with open(filename, 'wb') as handle:
@@ -74,6 +90,9 @@ class FeatSARSAAgent(Agent):
             
             best_a, currQ = self.greedyAction(state)
             self.updateWeights(state, terminal=True)
+
+            if self.log_name is not None:
+                self.update_log(state)
 
         #print '# Actions:', self.num_actions,'# Total Reward:', self.total_reward, "e", self.epsilon
         self.num_actions = 0
@@ -305,7 +324,7 @@ class FeatSARSAAgent(Agent):
 #python pacman.py -l customMaze -p FeatQLAgent -g PatrolGhost -n 201 -x 200 -a alfa=0.0001,discount_factor=0.9,epsilon=0.3 -q
 class FeatQLAgent(FeatSARSAAgent):
     "Function approximation SARSA"
-    def __init__ (self, alfa=0.01, maxa=1000, discount_factor=0.9, epsilon=0.1):
+    def __init__ (self, alfa=0.01, maxa=1000, discount_factor=0.9, epsilon=0.1, log_name=None):
 
         self.directions = (Directions.NORTH, Directions.SOUTH, Directions.EAST, Directions.WEST) #, Directions.STOP)
         
@@ -322,7 +341,8 @@ class FeatQLAgent(FeatSARSAAgent):
         self.num_actions = 0
         self.ngames = 0
         self.maxa=maxa
-
+        
+        self.curr_feat = None
         self.last_feat = None
 
         #main weights
@@ -332,16 +352,44 @@ class FeatQLAgent(FeatSARSAAgent):
         self.e_num_range    = e_range
         self.training_number_range = training_range
         self.alfa_num_range = alfa_range
+
+        self.log_name = log_name
+        self.rlog = []
+        self.slog = []
+
+
+    def update_log(self, state):
+            self.rlog.append(self.total_reward)
+            self.slog.append(state.getScore())
+
+            tmp = {
+                'score' : self.slog,
+                'reward': self.rlog
+            }
+
+            with open(self.log_name, "wb") as handle:
+                pickle.dump(tmp, handle)
     
 
+
+    def saveTable(self, filename):
+        tdict = {'weights' : self.weights}
+
+        with open(filename, 'wb') as handle:
+            pickle.dump(tdict, handle)
+
     def final(self, state):
-        if state.isLose():
-            self.reward = -500
-        else:
-            self.reward = 5000
-        
-        best_a, currQ = self.greedyAction(state)
-        self.updateWeights(state, terminal=True)
+        if self.is_train:
+            if state.isLose():
+                self.reward = -500
+            else:
+                self.reward = 5000
+            
+            best_a, currQ = self.greedyAction(state)
+            self.updateWeights(state, terminal=True)
+
+            if self.log_name is not None:
+                self.update_log(state)
 
         #print '# Actions:', self.num_actions,'# Total Reward:', self.total_reward, "e", self.epsilon
         self.num_actions = 0
@@ -352,6 +400,7 @@ class FeatQLAgent(FeatSARSAAgent):
     def init_weights(self):
         self.weights = np.zeros(NFEATURES+1)
         #self.weights  = np.random.randn(NFEATURES+1)
+        self.Q = self.weights
 
     def updateWeights(self, state, terminal=False):
 
