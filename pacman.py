@@ -566,6 +566,8 @@ def readCommand( argv ):
     pacman = pacmanType(**agentOpts) # Instantiate Pacman with agentArgs
 
     args['pacman'] = pacman
+    if options.inputModel is None and (options.pacman == "QLAgent" or options.pacman == "DoubleQLAgent"):
+        pacman.total_episodes = args['numTraining']
     args['output_model_path'] = options.outputModel
     if options.outputPlot is not None:
         util.plot_path = options.outputPlot
@@ -583,6 +585,15 @@ def readCommand( argv ):
             args['pacman'].statesL = data['statesL']
             args['pacman'].E_trace = np.zeros(data['qtable'].shape,  dtype=np.float16)
             args['pacman'].Ntable = np.zeros(data['qtable'].shape,  dtype=np.int64)
+        elif options.pacman == "QLAgent":
+            with open(options.inputModel) as json_file:
+                data = json.load(json_file)
+            args['pacman'].Q = data
+        elif options.pacman == "DoubleQLAgent":
+            with open(options.inputModel) as json_file:
+                data = json.load(json_file)
+            args['pacman'].Q_A = data['Q_A']
+            args['pacman'].Q_B = data['Q_B']
         else:
             with open(options.inputModel) as json_file:
                 data = json.load(json_file)
@@ -707,7 +718,8 @@ def runGames( layout, pacman, ghosts, display, output_model_path, numGames, reco
             pacman.is_train = False 
             pacman.epsilon_num = 0.01
             try:
-                if(len(pacman.Q) > 1 and output_model_path != None):
+                if ((str(pacman.__class__).find("DoubleQLAgent") != -1 and len(pacman.Q_A) > 1) or len(pacman.Q) > 1) \
+                and output_model_path != None:
                     pacman.saveTable(output_model_path)
             except:
                 pass
