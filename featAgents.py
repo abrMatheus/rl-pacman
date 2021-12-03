@@ -6,6 +6,11 @@ import os
 import random
 import util
 from feat_utils import NFEATURES, computeDistances, filterDist
+import models
+import json
+from collections import deque
+
+from keras.models import model_from_json, clone_model
 
 
 gamma_range    = np.array([0.9])
@@ -220,10 +225,10 @@ class FeatSARSAAgent(Agent):
         reward = -1 
 
         if state.getNumFood() < self.last_state.getNumFood():
-            reward += 10
+            reward += 1000
 
         if state.isWin():
-            reward += 5000
+            reward += 10000
 
         elif state.isLose():
             reward += -500
@@ -481,3 +486,262 @@ class FeatQLAgent(FeatSARSAAgent):
         print("Average Score : ", average_score)
 
     #----------------------------------------------------------------------------
+
+
+
+class DQNAgent(FeatQLAgent):
+    "Function approximation SARSA"
+    def __init__ (self, maxa=1000, epsilon=1, log_name=None, gamma = 0.99, pretrained_model=None, output_model="./model.h5"):
+
+        self.directions = (Directions.NORTH, Directions.SOUTH, Directions.EAST, Directions.WEST) #, Directions.STOP)
+
+
+
+        #self.i_epsilon = 1 if self.alfa > 0 else 0.0
+        self.epsilon   = float(epsilon)
+
+        self.last_state = None
+        self.is_train = True
+        self.total_reward = 0
+        self.num_actions = 0
+        self.ngames = 0
+        self.maxa=maxa
+        self.model_output_path = output_model
+
+        self.gamma_num_range = gamma_range
+        self.e_num_range    = e_range
+        self.training_number_range = training_range
+        self.gamma = gamma
+
+        self.log_name = log_name
+        self.rlog = []
+        self.slog = []
+
+
+        self.last_action = "Stop"
+        self.last_map = None
+        self.batch_size = 32
+        self.replay_memory = 100000
+        self.min_observation_size = 5000
+        self.t = 0
+        self.loss = 0
+        self.network_update_freq = 500
+        self.save_frequency = 500
+        self.final_epsilon = 0.01
+        self.explore = 10000
+        self.reward = 0
+
+        self.history = deque()
+        if pretrained_model is None:
+            self.model = models.createCNNwithAdam()
+        else:
+            self.model = models.createCNNwithAdam(pretrained=pretrained_model)
+
+        self.targetModel = clone_model(self.model)
+        self.targetModel.set_weights(self.model.get_weights())
+
+    def update_log(self, state):
+            self.rlog.append(self.total_reward)
+            self.slog.append(state.getScore())
+
+            tmp = {
+                'score' : self.slog,
+                'reward': self.rlog
+            }
+
+            with open(self.log_name, "wb") as handle:
+                pickle.dump(tmp, handle)
+
+    def saveTable(self, filename):
+        tdict = {'weights' : self.weights}
+
+        with open(filename, 'wb') as handle:
+            pickle.dump(tdict, handle)
+
+
+    def greedyAction(self, state):
+        legal = state.getLegalActions()
+        legal_vector = np.zeros(5)
+        all_actions = [Directions.STOP, Directions.NORTH, Directions.SOUTH, Directions.WEST, Directions.EAST]
+        for i in range(legal_vector.size):
+            legal_vector[i] = 0 if all_actions[i] in legal else -10000
+        current_map = util.get_state_image(state, self.last_map)
+        q = self.model.predict(current_map)
+        q = q + legal_vector
+        action_index = np.argmax(q)
+        action = all_actions[action_index]
+
+        return action
+
+    def egreedyAction(self, state):
+        p = random.random()
+
+        if p > self.epsilon:
+            action =  self.greedyAction(state)
+
+        else:
+            action = random.choice(state.getLegalActions())
+
+            successor = state.generateSuccessor(0, action)
+            num_food = successor.getNumFood()
+            dists = computeDistances(successor, num_food, self.directions)
+            dists = filterDist(dists)
+
+        return action
+
+
+    def getAction(self, state):
+        self.t = self.t + 1
+
+        if self.num_actions > self.maxa: #max number of actions
+            state.data._lose = True
+            return 'Stop'
+
+        if not self.is_train:
+            self.best_a = self.greedyAction(state)
+
+        elif self.last_map is None:
+            #fist action
+            self.best_a = self.randomAction(state)
+            num_food = state.getNumFood()
+            dists = computeDistances(state, num_food, self.directions)
+            dists = filterDist(dists)
+            self.curr_feat = self.featArray(dists)
+            self.reward = 0
+
+        else:
+            self.best_a = self.egreedyAction(state)
+            self.reward = self.getReward(state)
+            #if self.last_action == "Stop":
+            #    self.reward+=-100
+            #self.updateWeights(state)
+
+        current_map = util.get_state_image(state, self.last_map)
+        if self.last_map is not None:
+            if len(self.history) > self.replay_memory:
+                self.history.popleft()
+            self.history.append((self.last_map, util.get_action_index(self.last_action), self.reward, current_map, False))
+        self.last_action = self.best_a
+        self.last_map = current_map
+
+        self.last_state = state
+        self.num_actions += 1
+
+        #TRAINING
+        if self.t >= self.min_observation_size and self.is_train:
+            self.perform_train_pass()
+
+        if self.epsilon > self.final_epsilon and self.t > self.min_observation_size:
+            self.epsilon -= (self.epsilon - self.final_epsilon) / self.explore
+
+        return self.best_a
+
+    def final(self, state):
+        if self.is_train:
+            if state.isLose():
+                self.reward = -500
+            else:
+                self.reward = 5000
+
+            current_map = util.get_state_image(state, self.last_map)
+            if self.last_map is not None:
+                if len(self.history) > self.replay_memory:
+                    self.history.popleft()
+                self.history.append((self.last_map, util.get_action_index(self.last_action), self.reward, current_map, True))
+            self.last_action = self.best_a
+
+            self.last_state = state
+            self.num_actions += 1
+
+            if self.t >= self.min_observation_size:
+                self.perform_train_pass()
+
+            if self.log_name is not None:
+                self.update_log(state)
+        print(state.getScore(), state.getNumFood())
+
+        #print '# Actions:', self.num_actions,'# Total Reward:', self.total_reward, "e", self.epsilon
+        self.num_actions = 0
+        self.total_reward = 0
+        self.reward=0
+        self.ngames += 1
+        self.last_map = None
+
+    def perform_train_pass(self):
+        minibatch = random.sample(self.history, self.batch_size)
+        prev_map, action, reward, cur_map, is_terminal = zip(*minibatch)
+        prev_map = np.concatenate(prev_map)
+        cur_map = np.concatenate(cur_map)
+        y_j = self.targetModel.predict(prev_map)
+        Q_sa = self.targetModel.predict(cur_map)
+        y_j[range(self.batch_size), action] = reward + self.gamma*np.max(Q_sa, axis=1)*np.invert(is_terminal)
+        self.loss = self.model.train_on_batch(prev_map, y_j)
+
+        if self.t % self.network_update_freq == 0:
+            self.targetModel = clone_model(self.model)
+            self.targetModel.set_weights(self.model.get_weights())
+
+        if self.t % self.save_frequency == 0:
+            print((self.t/self.save_frequency), "Done, Loss = ", self.loss, "Epsilon = ", self.epsilon)
+            self.model.save_weights(self.model_output_path, overwrite=True)
+            with open("./model.json", "w") as outfile:
+                json.dump(self.model.to_json(), outfile)
+
+    #----------------------------------------------------------------------------
+    #Functions used for the grid search algorithm
+    def get_parameters_in_iteration(self, i):
+        e_size  = self.e_num_range.shape[0]
+        a_size   = self.alfa_num_range.shape[0]
+        g_size   = self.gamma_num_range.shape[0]
+        ntr_size = self.training_number_range.shape[0]
+
+        ntr = i%ntr_size
+        g   = (i//ntr_size)%g_size
+        a   = i//(g_size*ntr_size)%a_size
+        e  = i//(a_size*g_size*ntr_size)%e_size
+
+        return self.e_num_range[e], self.alfa_num_range[a], self.gamma_num_range[g], self.training_number_range[ntr]
+
+    def get_param_names(self):
+        return ['Epsilon', 'Alpha', 'Gamma', 'N']
+
+    def set_parameters_in_iteration(self, i):
+        e, a, g, ntr = self.get_parameters_in_iteration(i)
+        self.epsilon = e
+        self.alfa = a
+        self.discount_factor = g
+
+        return ntr
+
+    def get_training_space_size(self):
+        e  = self.e_num_range.shape[0]
+        a   = self.alfa_num_range.shape[0]
+        g   = self.gamma_num_range.shape[0]
+        ntr = self.training_number_range.shape[0]
+
+
+        return e*a*g*ntr
+
+    def reset_tables(self):
+        self.weights[:] = 0
+        #self.episode_size = 0
+        #self.episode = []
+        self.reward=0
+        self.last_state = None
+        self.last_feat = None
+        self.num_actions = 0
+        self.total_reward = 0
+
+    def write_best_parameters(self, best_parameters, average_score):
+        best_e = best_parameters[0]
+        best_alfa = best_parameters[1]
+        best_gamma = best_parameters[2]
+        best_n_training = best_parameters[3]
+        print("E : ", best_e)
+        print("Alfa : ", best_alfa)
+        print("Gamma : ", best_gamma)
+        print("N_training : ", best_n_training)
+        print("Average Score : ", average_score)
+
+    #----------------------------------------------------------------------------
+
