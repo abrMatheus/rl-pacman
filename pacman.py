@@ -54,6 +54,7 @@ import matplotlib.pyplot as plt
 from  matplotlib.colors import LinearSegmentedColormap
 from mpl_toolkits.mplot3d import Axes3D
 import seaborn as sns
+import torch
 
 ###################################################
 # YOUR INTERFACE TO THE PACMAN WORLD: A GameState #
@@ -550,7 +551,12 @@ def readCommand( argv ):
     args = dict()
 
     # Fix the random seed
-    if options.fixRandomSeed: random.seed('cs188')
+    if options.fixRandomSeed: 
+        print("RANDOM SEED")
+        #random.seed('cs188')
+        torch.manual_seed(0)
+        random.seed(0)
+        np.random.seed(0)
 
     # Choose a layout
     args['layout'] = layout.getLayout( options.layout )

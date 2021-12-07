@@ -278,19 +278,21 @@ class FeatSARSAAgent(Agent):
         score = (feature*self.weights).sum()
         return score
 
-    def featArray(self, dist):
+    def featArray(self, dist,x,y):
 
         features = np.zeros([NFEATURES +1])
 
-        features[0] = dist['food']                                        #1-distance to fodd
-        if (dist['ghost']<3): features[1] = 1.0                           #2-have a ghost nearby
+        features[0] = x
+        features[1] = y
+        #features[0] = dist['food']                                        #1-distance to fodd
+        #if (dist['ghost']<3): features[1] = 1.0                           #2-have a ghost nearby
         #features[2] = 1/(dist['ghost']+0.001)                            #3-inverse distance to g
-        features[2]  = dist['ghost']                                      #3-distance to ghost
-        if (dist['ghost']<3 and dist['food']<2) : features [3] = 1.0      #4-ghost and food nearby
+        #features[2]  = dist['ghost']                                      #3-distance to ghost
+        #if (dist['ghost']<3 and dist['food']<2) : features [3] = 1.0      #4-ghost and food nearby
     
         features[-1] = 1                                                  #bias
         
-        features = features/np.abs(features).sum()                        #normalize features 
+        #features = features/np.abs(features).sum()                        #normalize features 
         return features
 
     #----------------------------------------------------------------------------
@@ -431,17 +433,21 @@ class FeatQLAgent(FeatSARSAAgent):
                 self.update_log(state)
 
         #print '# Actions:', self.num_actions,'# Total Reward:', self.total_reward, "e", self.epsilon
+        print("score", state.getScore(), 'nactions', self.num_actions)
         self.num_actions = 0
         self.total_reward = 0
         self.reward=0
         self.ngames += 1
 
     def init_weights(self):
+        print("INIT WEIGHTS")
         self.weights = np.zeros(NFEATURES+1)
         #self.weights  = np.random.randn(NFEATURES+1)
         self.Q = self.weights
 
     def updateWeights(self, state, terminal=False):
+
+        print("curr feat", self.curr_feat)
 
         oldQ = self.computeScoreFromFeat(self.last_feat)
 
@@ -804,3 +810,296 @@ class DQNAgent(FeatQLAgent):
 
     #----------------------------------------------------------------------------
 
+# --------------------------------------------------------------------------------
+
+import torch
+
+from torch import nn
+
+def _initialize_weights(amodel):
+        for module in amodel.modules():
+            if isinstance(module, nn.Conv2d) or isinstance(module, nn.Linear):
+                print("if module", module)
+                nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
+                #nn.init.normal_(module.weight, std=0.1)
+                #nn.init.constant_(module.weight,0.)
+                if module.bias is not None:
+                    module.bias.data.zero_()
+            elif isinstance(module, nn.BatchNorm2d):
+                print("else module", module)
+                nn.init.constant_(module.weight, 1)
+                nn.init.constant_(module.bias, 0)
+        
+        #exit()
+
+def initialize_weights_random(amodel):
+    # Initializes weights according to the DCGAN paper
+    for m in amodel.modules():
+        if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d, nn.BatchNorm2d)):
+            nn.init.normal_(m.weight.data, 0.0, 0.02)
+
+
+# _initialize_weights(model)
+
+
+class Net(nn.Module):
+    def __init__(self,xsize=28,ysize=28):
+        super(Net, self).__init__()
+        self.bn0   = nn.BatchNorm2d(3)
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2, padding=1)
+        self.conv1 = nn.Conv2d(in_channels=3, out_channels=8, kernel_size=3, stride=1, padding=1, dilation=1)
+        self.bn1   = nn.BatchNorm2d(8)
+        self.conv2 = nn.Conv2d(in_channels=8, out_channels=16, kernel_size=3, stride=1, padding=1, dilation=1)
+        self.bn2   = nn.BatchNorm2d(16)
+        self.conv3 = nn.Conv2d(in_channels=16, out_channels=32, kernel_size=3, stride=1, padding=1, dilation=1)
+        self.bn3   = nn.BatchNorm2d(32)
+        #self.fc1 = nn.Linear(32 * (xsize-6) * (ysize-6), 256)
+        self.fc1 = nn.Linear(32*xsize*ysize, 128)
+        #self.fc1 = nn.Linear(128, 128)
+        self.fc2 = nn.Linear(128, 4)
+        self.softmax = torch.nn.Softmax(dim=1)
+
+    def forward(self, x):
+        x = self.bn0(x)
+        x = F.relu(self.conv1(x))
+        #x = self.pool(x)
+        #x = self.bn1(x)
+        x = F.relu(self.conv2(x))
+        #x = self.pool(x)
+        #x = self.bn2(x)
+        x = F.relu(self.conv3(x))
+        #x = self.pool(x)
+        #x = self.bn3(x)
+        x = torch.flatten(x, 1) # flatten all dimensions except batch
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.softmax(x)
+        return x
+
+
+#from torchsummary import summary
+import torch.nn.functional as F
+
+def moving_average(x, w):
+    return np.convolve(x, np.ones(w), 'valid') / w
+
+
+import matplotlib.pyplot as plt
+
+class PosModel(nn.Module):
+    def __init__(self,inputsize = 2, nactions=4, hiddensize = 256):
+        super(PosModel, self).__init__()
+        self.fc1 = nn.Linear(inputsize, hiddensize)
+        self.fc2 = nn.Linear(hiddensize, nactions)
+        self.softmax = torch.nn.Softmax(dim=1)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = self.fc2(x)
+        x = self.softmax(x)
+        return x
+
+import os
+class REAgent(Agent):
+    "REINFORCE"
+    def __init__ (self, lr=0.001, maxa=5000, gamma=0.99, image=False,horizon=10000000):
+        self.lr = float(lr)
+        self.maxa = int(maxa)
+        self.gamma = float(gamma)
+
+        self.actions = np.array(['North', 'East', 'South', 'West'])#, 'Stop']
+
+        self.init_values()
+
+        self.image = image
+        
+        if not self.image:
+            self.model = PosModel()
+        else:
+            self.model = Net(5,5)
+
+        self.optim = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+
+        self.episodes = 1
+
+
+        self.plot_reward  = []
+        self.plot_loss    = []
+        self.plot_actions = []
+
+        if os.path.exists('loss.png'):
+            os.rename("loss.png", "loss_1.png")
+        
+        self.is_train = True
+
+        self.horizon = int(horizon)
+
+        #initialize_weights_random(self.model)
+
+        #_initialize_weights(self.model)
+
+    def init_values(self):
+        self.num_actions = 0
+        self.last_state = None
+        self.total_reward = 0
+
+        self.rewards_list = []
+        self.probs_list   = []
+        self.total_loss = 0
+
+
+
+    def final(self,state):
+
+        self.reward = self.getReward(state)
+
+
+        #if True:
+        if self.is_train:
+        
+            loss = self.update_model()
+
+            print("Episode N", self.num_actions, "R:", self.total_reward, "L:", loss)
+            print("")
+
+            self.plot_reward.append(self.total_reward)
+            self.plot_loss.append(self.total_loss)
+            self.plot_actions.append(self.num_actions)
+
+
+            if self.episodes % 50 == 0:
+                self.plot()
+
+        self.episodes +=1
+        self.init_values()
+
+    def plot(self):
+
+        fig, axs = plt.subplots(3,1)
+        axs[0].plot(self.plot_loss)
+        axs[0].plot(moving_average(self.plot_actions, 15))
+        axs[0].set_ylabel('loss')
+
+        axs[1].plot(self.plot_actions,'.')
+        axs[1].plot(moving_average(self.plot_actions, 15))
+        axs[1].set_ylabel('n_actions')
+
+        axs[2].plot(self.plot_reward,'.')
+        axs[2].plot(moving_average(self.plot_reward, 15))
+        axs[2].set_ylabel('reward')
+
+        plt.savefig('loss.png')
+
+        plt.close()
+
+
+    def update_model(self):
+
+        discounted_rewards = []
+
+        for t in range(len(self.rewards_list)):
+            Gt = 0
+            pw = 0
+            for r in self.rewards_list[t:]:
+                Gt = Gt + self.gamma**pw * r
+                pw += 1
+            discounted_rewards.append(Gt)
+
+        #print("rewards", self.rewards_list)
+        #print("discounted_rewards", discounted_rewards)
+
+        discounted_rewards = torch.Tensor(discounted_rewards)
+
+        policy_gradient = []
+
+        for prob, Gt in zip(self.probs_list, discounted_rewards):
+            policy_gradient.append(-torch.log(prob) * Gt)
+
+        #print("policy_gradient", policy_gradient)
+
+
+        self.optim.zero_grad()
+        policy_gradient = torch.stack(policy_gradient).sum()
+        policy_gradient.backward()
+        self.optim.step()
+
+
+        self.total_loss +=policy_gradient.item()
+        self.rewards_list = []
+        self.probs_list = []
+
+        return policy_gradient.item()
+
+
+    def getAction(self,state):
+
+        
+        if self.last_state is not None:
+            self.reward = self.getReward(state)
+
+            if self.num_actions % self.horizon == 0:
+                loss = self.update_model()
+
+        action = self.getModelAction(state)
+
+        self.num_actions +=1
+        self.last_state = state
+
+        if self.num_actions >= self.maxa:
+            state.data._lose = True
+            self.islose = True
+
+        return action
+
+    
+    def getReward(self, state):
+
+        retval = -1
+        if state.isWin():
+            retval = 10
+        elif state.isLose():
+            retval = -10
+        elif state.getNumFood() < self.last_state.getNumFood():
+            retval = 1
+        elif self.invalid_action:
+            retval = -2
+        else:
+            retval = -1
+        
+
+        self.rewards_list.append(retval)
+        self.total_reward += retval
+
+        return retval
+
+
+    def getModelAction(self, state):
+
+        pos = torch.Tensor(state.getPacmanPosition()).unsqueeze(0)
+        if self.image:
+            current_map = util.get_state_image(state, None).transpose(0,3,1,2)
+            current_map = torch.Tensor(current_map)
+        else:    
+            current_map = pos
+        
+
+        prob = self.model.forward(current_map)
+
+        if self.is_train:
+            chosed_action  = np.random.choice(self.actions, p=prob[0].cpu().detach().numpy())
+        else:
+            chosed_action = self.actions[torch.argmax(prob)]
+
+        legal_actions = state.getLegalActions()
+        action = chosed_action
+        self.invalid_action = False
+        if not chosed_action in legal_actions:
+            action = 'Stop'
+            self.invalid_action = True
+
+
+        print("pos",pos, prob, action, self.invalid_action)
+
+        self.probs_list.append(prob[0][np.where(self.actions == chosed_action)])
+
+        return action
