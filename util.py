@@ -717,3 +717,124 @@ def update_heatmap(state_id, action, Q_val):
             max_Q_state[x][y][0] = state_id
             max_Q_state[x][y][1] = action
             max_Q_val[x][y] = Q_val
+
+import numpy as np
+
+def get_pixel_state_value(state, position):
+    i = position[0]
+    j = position[1] - 1
+    ghosts_list = state.getGhostPositions()
+    ghosts = state.getGhostStates()
+    scared_list = []
+    for g in ghosts:
+        if g.scaredTimer > 0:
+            position = g.getPosition()
+            scared_list.append(position)
+            ghosts_list.remove(position)
+    food_list = state.getFood()
+    number_of_food = state.getNumFood()
+    pacman_position = state.getPacmanPosition()
+    walls = state.getWalls()
+    capsule_list = state.getCapsules()
+
+    pixel_val = 50
+
+    if pacman_position == (i,j):
+        pixel_val = 255
+
+    if (i,j) in capsule_list:
+        pixel_val = 80
+
+    if food_list[i][j]:
+        pixel_val = 127
+
+    if (i,j) in ghosts_list and (i,j) not in scared_list:
+        pixel_val = 30
+
+    if (i,j) in ghosts_list and (i,j) in scared_list:
+        pixel_val = 100
+
+    if number_of_food == 0 and food_list[i][j]:
+        pixel_val = 210
+
+    if walls[i][j]:
+        pixel_val = 0
+
+    return pixel_val
+
+
+def get_new_pixel_state_value(state, position):
+    i = position[0]
+    j = position[1] - 1
+    ghosts_list = state.getGhostPositions()
+    ghosts = state.getGhostStates()
+    scared_list = []
+    for g in ghosts:
+        if g.scaredTimer > 0:
+            position = g.getPosition()
+            scared_list.append(position)
+            ghosts_list.remove(position)
+    food_list = state.getFood()
+    number_of_food = state.getNumFood()
+    pacman_position = state.getPacmanPosition()
+    walls = state.getWalls()
+    capsule_list = state.getCapsules()
+
+    pixel_val = np.uint8([30,30,30])
+
+    if pacman_position == (i,j):
+        pixel_val += np.uint8([225,0,0])
+
+    #if (i,j) in capsule_list:
+    #    pixel_val += [0,0,20]
+
+    if food_list[i][j]:
+        pixel_val += np.uint8([0,0,225])
+
+    if (i,j) in ghosts_list and (i,j) not in scared_list:
+        pixel_val += np.uint8([0,225,0])
+
+    #if (i,j) in ghosts_list and (i,j) in scared_list:
+    #    pixel_val += np.uint8([0,120,0])
+
+    if walls[i][j]:
+        pixel_val = [0,0,0]
+
+    return pixel_val
+
+def get_state_image(state, last_state_image):
+    walls = state.getWalls()
+    x_size = walls.width
+    y_size = walls.height
+    position = [0,0]
+
+    indices = [(x, y) for x in range(x_size) for y in range(y_size, 0, -1)]
+    size = 224, 224
+
+    state_image = np.uint8([get_new_pixel_state_value(state, i) for i in indices]).reshape([1,x_size, y_size,3])
+    state_image = np.swapaxes(state_image, 1,2)
+
+    if last_state_image is not None:
+        state_image[last_state_image[:,:,:,0] == 255] = np.uint8([80,0,0])
+        state_image[last_state_image[:,:,:,1] == 255] = np.uint8([0,80,0])
+        state_image[state_image > 255] = 255
+
+    #print(state_image.shape)
+
+    #im = Image.fromarray(state_image)
+    #im = im.resize(size, Image.NEAREST)
+    #im.save("state_images/state.png")
+
+    return state_image
+
+def get_action_index(action):
+    NORTH = 'North'
+    SOUTH = 'South'
+    EAST = 'East'
+    WEST = 'West'
+    STOP = 'Stop'
+
+    all_actions = [STOP, NORTH, SOUTH, WEST, EAST]
+    index = all_actions.index(action)
+
+    return index
