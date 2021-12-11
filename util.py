@@ -690,8 +690,8 @@ def get_new_pixel_state_value(state, position):
     if pacman_position == (i,j):
         pixel_val += np.uint8([225,0,0])
 
-    #if (i,j) in capsule_list:
-    #    pixel_val += [0,0,20]
+    if (i,j) in capsule_list:
+        pixel_val += np.uint8([209,119,127])
 
     if food_list[i][j]:
         pixel_val += np.uint8([0,0,225])
@@ -699,8 +699,8 @@ def get_new_pixel_state_value(state, position):
     if (i,j) in ghosts_list and (i,j) not in scared_list:
         pixel_val += np.uint8([0,225,0])
 
-    #if (i,j) in ghosts_list and (i,j) in scared_list:
-    #    pixel_val += np.uint8([0,120,0])
+    if (i,j) in ghosts_list and (i,j) in scared_list:
+        pixel_val += np.uint8([75,58,65])
 
     if walls[i][j]:
         pixel_val = [0,0,0]
