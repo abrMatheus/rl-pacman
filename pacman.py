@@ -584,7 +584,12 @@ def readCommand( argv ):
         util.set_grid_mapping(args['layout'].width, args['layout'].height, args['layout'].walls)
 
     if(options.inputModel is not None):
-        if(options.pacman == "SARSAAgent"):
+        if(options.pacman == "REAgent"):
+            import torch
+            checkpoint = torch.load(options.inputModel)
+            pacman.model.load_state_dict(checkpoint['model_state_dict'])
+            pacman.optim.load_state_dict(checkpoint['optimizer_state_dict'])
+        elif(options.pacman == "SARSAAgent"):
             with open(options.inputModel, 'rb') as handle:
                 data = pickle.load(handle)
             args['pacman'].Q = data['qtable']
@@ -761,6 +766,9 @@ def runGames( layout, pacman, ghosts, display, output_model_path, numGames, reco
                 plot2d('final', pacman_name)
         except:
             pass
+
+    if (str(pacman.__class__).find("REAgent") != -1 and output_model_path != None):
+        pacman.saveTable(output_model_path)
 
     if (numGames-numTraining) > 0:
         scores = [game.state.getScore() for game in games]

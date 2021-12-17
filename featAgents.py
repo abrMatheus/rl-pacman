@@ -860,6 +860,7 @@ class Net(nn.Module):
         self.softmax = torch.nn.Softmax(dim=1)
 
     def forward(self, x):
+        # print(x.shape)
         x = self.bn0(x)
         x = F.relu(self.conv1(x))
         #x = self.pool(x)
@@ -872,7 +873,38 @@ class Net(nn.Module):
         #x = self.bn3(x)
         x = torch.flatten(x, 1) # flatten all dimensions except batch
         x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
+        x = self.fc2(x)
+        x = self.softmax(x)
+        return x
+
+
+
+class BigNet(nn.Module):
+    def __init__(self,xsize=28,ysize=28):
+        super(BigNet, self).__init__()
+
+        self.feat = nn.Sequential(
+            nn.Conv2d(in_channels=3, out_channels=32, kernel_size=7, stride=4, padding=3, dilation=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, stride=2, padding=1, dilation=1),
+            nn.ReLU(inplace=True),
+            nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1, dilation=1),
+            nn.ReLU(inplace=True),
+            nn.Flatten(),
+            nn.Linear(64*4, 512),
+            nn.ReLU(inplace=True),
+            nn.Linear(512,4),
+        )
+        self.softmax = torch.nn.Softmax(dim=1)
+
+    def forward(self, x):
+        
+        # print(x.shape)
+
+        x = self.feat(x)
+
+        # print(x.shape)
+
         x = self.softmax(x)
         return x
 
@@ -916,7 +948,7 @@ class REAgent(Agent):
         if not self.image:
             self.model = PosModel()
         else:
-            self.model = Net(5,5)
+            self.model = BigNet(10,12)
 
         self.optim = torch.optim.Adam(self.model.parameters(), lr=self.lr)
 
@@ -962,7 +994,8 @@ class REAgent(Agent):
             print("Episode N", self.num_actions, "R:", self.total_reward, "L:", loss)
             print("")
 
-            self.plot_reward.append(self.total_reward)
+            #self.plot_reward.append(self.total_reward)
+            self.plot_reward.append(state.getScore())
             self.plot_loss.append(self.total_loss)
             self.plot_actions.append(self.num_actions)
 
@@ -1056,13 +1089,13 @@ class REAgent(Agent):
 
         retval = -1
         if state.isWin():
-            retval = 10
+            retval = 5000
         elif state.isLose():
-            retval = -10
+            retval = -500
         elif state.getNumFood() < self.last_state.getNumFood():
-            retval = 1
+            retval = 10
         elif self.invalid_action:
-            retval = -2
+            retval = -10
         else:
             retval = -1
         
@@ -1084,13 +1117,23 @@ class REAgent(Agent):
         
 
         prob = self.model.forward(current_map)
+        legal_actions = state.getLegalActions()
+
+        new_prob = torch.zeros_like(prob)
+
+        for legal_a in legal_actions:
+            if legal_a != 'Stop':
+                a_index  = np.where(self.actions == legal_a)[0]
+                new_prob[0,a_index] = prob[0,a_index]
+
+
+        new_prob = new_prob/new_prob.sum()
 
         if self.is_train:
             chosed_action  = np.random.choice(self.actions, p=prob[0].cpu().detach().numpy())
         else:
-            chosed_action = self.actions[torch.argmax(prob)]
+            chosed_action = self.actions[torch.argmax(new_prob)]
 
-        legal_actions = state.getLegalActions()
         action = chosed_action
         self.invalid_action = False
         if not chosed_action in legal_actions:
@@ -1103,3 +1146,9 @@ class REAgent(Agent):
         self.probs_list.append(prob[0][np.where(self.actions == chosed_action)])
 
         return action
+
+    def saveTable(self, path):
+        torch.save({
+            'model_state_dict': self.model.state_dict(),
+            'optimizer_state_dict': self.optim.state_dict(),
+            }, path)
