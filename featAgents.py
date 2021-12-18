@@ -891,10 +891,14 @@ class BigNet(nn.Module):
             nn.Conv2d(in_channels=64, out_channels=64, kernel_size=3, stride=1, padding=1, dilation=1),
             nn.ReLU(inplace=True),
             nn.Flatten(),
+        )
+
+        self.linear = nn.Sequential(
             nn.Linear(64*4, 512),
             nn.ReLU(inplace=True),
             nn.Linear(512,4),
         )
+
         self.softmax = torch.nn.Softmax(dim=1)
 
     def forward(self, x):
@@ -904,6 +908,8 @@ class BigNet(nn.Module):
         x = self.feat(x)
 
         # print(x.shape)
+
+        x = self.linear(x)
 
         x = self.softmax(x)
         return x
@@ -934,7 +940,7 @@ class PosModel(nn.Module):
 import os
 class REAgent(Agent):
     "REINFORCE"
-    def __init__ (self, lr=0.001, maxa=5000, gamma=0.99, image=False,horizon=10000000):
+    def __init__ (self, lr=0.001, maxa=5000, gamma=0.99, image=False,horizon=10000000,log_name=None):
         self.lr = float(lr)
         self.maxa = int(maxa)
         self.gamma = float(gamma)
@@ -958,6 +964,9 @@ class REAgent(Agent):
         self.plot_reward  = []
         self.plot_loss    = []
         self.plot_actions = []
+        self.score_log = []
+
+        self.log_name = log_name
 
         if os.path.exists('loss.png'):
             os.rename("loss.png", "loss_1.png")
@@ -969,6 +978,19 @@ class REAgent(Agent):
         #initialize_weights_random(self.model)
 
         #_initialize_weights(self.model)
+
+    def update_log(self):
+
+            tmp = {
+                'score'  : self.score_log,
+                'reward' : self.plot_reward,
+                'loss'   : self.plot_loss, 
+                'actions': self.plot_actions
+            }
+
+            with open(self.log_name, "wb") as handle:
+                pickle.dump(tmp, handle)
+
 
     def init_values(self):
         self.num_actions = 0
@@ -994,14 +1016,17 @@ class REAgent(Agent):
             print("Episode N", self.num_actions, "R:", self.total_reward, "L:", loss)
             print("")
 
-            #self.plot_reward.append(self.total_reward)
-            self.plot_reward.append(state.getScore())
+            self.plot_reward.append(self.total_reward)
             self.plot_loss.append(self.total_loss)
             self.plot_actions.append(self.num_actions)
+            self.score_log.append(state.getScore())
 
 
             if self.episodes % 50 == 0:
                 self.plot()
+
+            if self.log_name is not None:
+                self.update_log()
 
         self.episodes +=1
         self.init_values()
@@ -1017,8 +1042,8 @@ class REAgent(Agent):
         axs[1].plot(moving_average(self.plot_actions, 15))
         axs[1].set_ylabel('n_actions')
 
-        axs[2].plot(self.plot_reward,'.')
-        axs[2].plot(moving_average(self.plot_reward, 15))
+        axs[2].plot(self.score_log,'.')
+        axs[2].plot(moving_average(self.score_log, 15))
         axs[2].set_ylabel('reward')
 
         plt.savefig('loss.png')
@@ -1087,15 +1112,23 @@ class REAgent(Agent):
     
     def getReward(self, state):
 
+        pos = self.last_state.getPacmanPosition()
+        prev_edible_ghosts = self.getEdibleGhosts(self.last_state)
+        prev_capsules = self.getCapsules(self.last_state)
+
         retval = -1
         if state.isWin():
             retval = 5000
         elif state.isLose():
-            retval = -500
+            retval = -50
         elif state.getNumFood() < self.last_state.getNumFood():
-            retval = 10
+            retval = 100
         elif self.invalid_action:
-            retval = -10
+            retval = -5
+        elif len(state.getCapsules()) < (self.last_state.getCapsules()):
+            retval = 1
+        elif (prev_edible_ghosts[pos[0]][pos[1]]):
+            retval = 50
         else:
             retval = -1
         
@@ -1105,6 +1138,23 @@ class REAgent(Agent):
 
         return retval
 
+
+    def getEdibleGhosts(self, state):
+        ghosts = [
+            s.getPosition() for s in state.getGhostStates()
+            if s.scaredTimer > 0
+        ]
+        return self.getMap(state, ghosts)
+
+    def getCapsules(self, state):
+        return self.getMap(state, state.getCapsules())
+
+    def getMap(self, state, positions):
+        layout = state.data.layout
+        grid = Grid(layout.width, layout.height, 0)
+        for i, (x, y) in enumerate(positions):
+            grid[int(round(x))][int(round(y))] = i + 1
+        return grid
 
     def getModelAction(self, state):
 
