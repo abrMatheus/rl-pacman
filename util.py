@@ -18,6 +18,7 @@ import heapq, random
 from io import StringIO
 import numpy as np
 from PIL import Image
+import matplotlib.pyplot as plt
 
 
 """
@@ -690,8 +691,8 @@ def get_new_pixel_state_value(state, position):
     if pacman_position == (i,j):
         pixel_val += np.uint8([225,0,0])
 
-    #if (i,j) in capsule_list:
-    #    pixel_val += [0,0,20]
+    if (i,j) in capsule_list:
+        pixel_val += np.uint8([0,0,120])
 
     if food_list[i][j]:
         pixel_val += np.uint8([0,0,225])
@@ -699,11 +700,11 @@ def get_new_pixel_state_value(state, position):
     if (i,j) in ghosts_list and (i,j) not in scared_list:
         pixel_val += np.uint8([0,225,0])
 
-    #if (i,j) in ghosts_list and (i,j) in scared_list:
-    #    pixel_val += np.uint8([0,120,0])
+    if (i,j) in ghosts_list and (i,j) in scared_list:
+        pixel_val += np.uint8([0,120,0])
 
     if walls[i][j]:
-        pixel_val = [0,0,0]
+        pixel_val = np.uint8([0,0,0])
 
     return pixel_val
 
@@ -714,21 +715,23 @@ def get_state_image(state, last_state_image):
     position = [0,0]
 
     indices = [(x, y) for x in range(x_size) for y in range(y_size, 0, -1)]
-    size = 224, 224
+    #size = x_size*30, y_size*30
 
     state_image = np.uint8([get_new_pixel_state_value(state, i) for i in indices]).reshape([1,x_size, y_size,3])
     state_image = np.swapaxes(state_image, 1,2)
 
-    if last_state_image is not None:
-        state_image[last_state_image[:,:,:,0] == 255] = np.uint8([80,0,0])
-        state_image[last_state_image[:,:,:,1] == 255] = np.uint8([0,80,0])
-        state_image[state_image > 255] = 255
+    #if last_state_image is not None:
+    #    state_image[last_state_image[:,:,:,0] == 255] = np.uint8([60,0,0])
+    #    state_image[last_state_image[:,:,:,1] == 255] = np.uint8([0,60,0])
+    #    state_image[state_image > 255] = 255
 
     #print(state_image.shape)
 
     #im = Image.fromarray(state_image)
     #im = im.resize(size, Image.NEAREST)
     #im.save("state_images/state.png")
+    #if last_state_image is not None:
+    #    sys.exit()
 
     return state_image
 
@@ -743,3 +746,38 @@ def get_action_index(action):
     index = all_actions.index(action)
 
     return index
+
+def movingaverage(in_interval, window_size):
+    interval = np.array(in_interval)
+    padded   = np.pad(interval, (window_size, window_size), 'constant',
+                      constant_values=(interval[0], interval[-1]))
+
+    window= np.ones(int(window_size))/float(window_size)
+    filt = np.convolve(padded, window, 'same')
+    return filt[window_size : -window_size]
+
+def plot_loss_history(loss_history):
+    mean_window = 200
+    moving_mean = movingaverage(loss_history, mean_window)
+
+    scores = np.array(moving_mean)[mean_window/2:-mean_window/2]
+    indices = np.arange(scores.shape[0])
+
+    plt.plot(indices, scores)
+    plt.ylabel('Mean Loss')
+    plt.xlabel('Episode')
+    plt.title("Loss")
+    plt.savefig("loss_new.png")
+
+def plot_reward_history(reward_history):
+    mean_window = 50
+    moving_mean = movingaverage(reward_history, mean_window)
+
+    scores = np.array(moving_mean)[mean_window/2:-mean_window/2]
+    indices = np.arange(scores.shape[0])
+
+    plt.plot(indices, scores)
+    plt.ylabel('Mean reward')
+    plt.xlabel('Episode')
+    plt.title("Reward")
+    plt.savefig("rewards.png")

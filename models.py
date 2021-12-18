@@ -11,7 +11,7 @@ import keras.backend as K
 def mean_pred(y_true, y_pred):
     return K.mean(y_pred)
 
-def createCNNwithAdam(learningRate = 0.00025, inputDimensions = (12, 10, 3), pretrained=None):
+def createCNNwithAdam(learningRate = 0.00025, inputDimensions = (7, 20, 3), pretrained=None):
 
     model = Sequential()
 

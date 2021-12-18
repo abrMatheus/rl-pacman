@@ -225,13 +225,40 @@ class FeatSARSAAgent(Agent):
         reward = -1 
 
         if state.getNumFood() < self.last_state.getNumFood():
-            reward += 1000
+            reward += 100
 
         if state.isWin():
-            reward += 10000
+            reward += 5000
+
+        if len(state.getCapsules()) < len(self.last_state.getCapsules()):
+            reward += 100
+
+        if sum(state.data._eaten) > 0:
+            reward += 250
 
         elif state.isLose():
             reward += -500
+
+        return reward
+
+    def getReward_(self, state):
+
+        reward = -1
+
+        if state.getNumFood() < self.last_state.getNumFood():
+            reward += 500
+
+        if state.isWin():
+            reward += 50000
+
+        if len(state.getCapsules()) < len(self.last_state.getCapsules()):
+            reward += 250
+
+        if sum(state.data._eaten) > 0:
+            reward += 750
+
+        elif state.isLose():
+            reward += -5000
 
         return reward
 
@@ -329,7 +356,7 @@ class FeatSARSAAgent(Agent):
 #python pacman.py -l customMaze -p FeatQLAgent -g PatrolGhost -n 201 -x 200 -a alfa=0.0001,discount_factor=0.9,epsilon=0.3 -q
 class FeatQLAgent(FeatSARSAAgent):
     "Function approximation SARSA"
-    def __init__ (self, alfa=0.01, maxa=1000, discount_factor=0.9, epsilon=0.1, log_name=None):
+    def __init__ (self, alfa=0.01, maxa=3000, discount_factor=0.9, epsilon=0.1, log_name=None):
 
         self.directions = (Directions.NORTH, Directions.SOUTH, Directions.EAST, Directions.WEST) #, Directions.STOP)
         
@@ -491,7 +518,7 @@ class FeatQLAgent(FeatSARSAAgent):
 
 class DQNAgent(FeatQLAgent):
     "Function approximation SARSA"
-    def __init__ (self, maxa=1000, epsilon=1, log_name=None, gamma = 0.99, pretrained_model=None, output_model="./model.h5"):
+    def __init__ (self, maxa=1000, epsilon=1, log_name=None, gamma = 0.99, pretrained_model=None, output_model="./model.h5", map_size="7.20.3"):
 
         self.directions = (Directions.NORTH, Directions.SOUTH, Directions.EAST, Directions.WEST) #, Directions.STOP)
 
@@ -499,18 +526,18 @@ class DQNAgent(FeatQLAgent):
 
         #self.i_epsilon = 1 if self.alfa > 0 else 0.0
         self.epsilon   = float(epsilon)
+        map_size_array = map_size.split(".")
+        self.map_size = (int(map_size_array[0]),int(map_size_array[1]),int(map_size_array[2]))
 
         self.last_state = None
         self.is_train = True
         self.total_reward = 0
         self.num_actions = 0
-        self.ngames = 0
         self.maxa=maxa
         self.model_output_path = output_model
 
-        self.gamma_num_range = gamma_range
-        self.e_num_range    = e_range
-        self.training_number_range = training_range
+        self.batch_size_num_range = np.array([8,16,32])
+        self.network_update_freq_num_range = np.array([250,500,1000])
         self.gamma = gamma
 
         self.log_name = log_name
@@ -530,12 +557,16 @@ class DQNAgent(FeatQLAgent):
         self.final_epsilon = 0.01
         self.explore = 10000
         self.reward = 0
+        self.episode_number = 0
+
+        self.loss_history = []
+        self.reward_history = []
 
         self.history = deque()
         if pretrained_model is None:
-            self.model = models.createCNNwithAdam()
+            self.model = models.createCNNwithAdam(inputDimensions=self.map_size)
         else:
-            self.model = models.createCNNwithAdam(pretrained=pretrained_model)
+            self.model = models.createCNNwithAdam(pretrained=pretrained_model, inputDimensions=self.map_size)
 
         self.targetModel = clone_model(self.model)
         self.targetModel.set_weights(self.model.get_weights())
@@ -638,10 +669,12 @@ class DQNAgent(FeatQLAgent):
 
     def final(self, state):
         if self.is_train:
-            if state.isLose():
-                self.reward = -500
-            else:
-                self.reward = 5000
+            # if state.isLose():
+            #     self.reward = -500
+            # else:
+            #     self.reward = 5000
+            self.reward = self.getReward(state)
+            self.reward_history.append(state.getScore())
 
             current_map = util.get_state_image(state, self.last_map)
             if self.last_map is not None:
@@ -658,13 +691,16 @@ class DQNAgent(FeatQLAgent):
 
             if self.log_name is not None:
                 self.update_log(state)
-        print(state.getScore(), state.getNumFood())
+        #print("Score: ", state.getScore(), state.getNumFood())
+        self.episode_number+=1
+
+        if self.episode_number > 900:
+            util.plot_reward_history(self.reward_history)
 
         #print '# Actions:', self.num_actions,'# Total Reward:', self.total_reward, "e", self.epsilon
         self.num_actions = 0
         self.total_reward = 0
         self.reward=0
-        self.ngames += 1
         self.last_map = None
 
     def perform_train_pass(self):
@@ -676,70 +712,81 @@ class DQNAgent(FeatQLAgent):
         Q_sa = self.targetModel.predict(cur_map)
         y_j[range(self.batch_size), action] = reward + self.gamma*np.max(Q_sa, axis=1)*np.invert(is_terminal)
         self.loss = self.model.train_on_batch(prev_map, y_j)
+        #print("Loss", self.loss)
+
+        #if self.t > 500:
+        self.loss_history.append(self.loss)
 
         if self.t % self.network_update_freq == 0:
             self.targetModel = clone_model(self.model)
             self.targetModel.set_weights(self.model.get_weights())
 
         if self.t % self.save_frequency == 0:
-            print((self.t/self.save_frequency), "Done, Loss = ", self.loss, "Epsilon = ", self.epsilon)
+            #print((self.t/self.save_frequency), "Done, Loss = ", self.loss, "Epsilon = ", self.epsilon)
             self.model.save_weights(self.model_output_path, overwrite=True)
             with open("./model.json", "w") as outfile:
                 json.dump(self.model.to_json(), outfile)
+        #if self.t%1000 == 0:
+        #    util.plot_loss_history(self.loss_history)
+
+
+
 
     #----------------------------------------------------------------------------
     #Functions used for the grid search algorithm
     def get_parameters_in_iteration(self, i):
-        e_size  = self.e_num_range.shape[0]
-        a_size   = self.alfa_num_range.shape[0]
-        g_size   = self.gamma_num_range.shape[0]
-        ntr_size = self.training_number_range.shape[0]
 
-        ntr = i%ntr_size
-        g   = (i//ntr_size)%g_size
-        a   = i//(g_size*ntr_size)%a_size
-        e  = i//(a_size*g_size*ntr_size)%e_size
+        self.batch_size_num_range = np.array([4, 8, 32])
+        self.network_update_freq_num_range = np.array([500])
 
-        return self.e_num_range[e], self.alfa_num_range[a], self.gamma_num_range[g], self.training_number_range[ntr]
+        b_size  = self.batch_size_num_range.shape[0]
+        r_size   = self.network_update_freq_num_range.shape[0]
+
+        r = i%r_size
+        b = (i//r_size)%b_size
+
+        return self.network_update_freq_num_range[r], self.batch_size_num_range[b]
 
     def get_param_names(self):
-        return ['Epsilon', 'Alpha', 'Gamma', 'N']
+        return ['Network Update Frequency', 'Batch Size']
 
     def set_parameters_in_iteration(self, i):
-        e, a, g, ntr = self.get_parameters_in_iteration(i)
-        self.epsilon = e
-        self.alfa = a
-        self.discount_factor = g
+        r, b = self.get_parameters_in_iteration(i)
+        self.network_update_freq = r
+        self.batch_size = b
 
-        return ntr
+        return 1000
 
     def get_training_space_size(self):
-        e  = self.e_num_range.shape[0]
-        a   = self.alfa_num_range.shape[0]
-        g   = self.gamma_num_range.shape[0]
-        ntr = self.training_number_range.shape[0]
+        r   = self.network_update_freq_num_range.shape[0]
+        b   = self.batch_size_num_range.shape[0]
+        ntr = 1
 
 
-        return e*a*g*ntr
+        return r*b*ntr
 
     def reset_tables(self):
-        self.weights[:] = 0
-        #self.episode_size = 0
-        #self.episode = []
+        self.epsilon = float(1.0)
+        self.model = models.createCNNwithAdam(inputDimensions=self.map_size)
+        self.targetModel = clone_model(self.model)
+        self.targetModel.set_weights(self.model.get_weights())
         self.reward=0
         self.last_state = None
         self.last_feat = None
+        self.last_action = "Stop"
+        self.last_map = None
         self.num_actions = 0
         self.total_reward = 0
+        self.history = deque()
+        self.t = 0
+        self.loss = 0
 
     def write_best_parameters(self, best_parameters, average_score):
-        best_e = best_parameters[0]
-        best_alfa = best_parameters[1]
-        best_gamma = best_parameters[2]
-        best_n_training = best_parameters[3]
-        print("E : ", best_e)
-        print("Alfa : ", best_alfa)
-        print("Gamma : ", best_gamma)
+        best_r = best_parameters[0]
+        best_b = best_parameters[1]
+        best_n_training = 1000
+        print("Network Update Frequency : ", best_r)
+        print("Batch Size : ", best_b)
         print("N_training : ", best_n_training)
         print("Average Score : ", average_score)
 
