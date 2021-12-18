@@ -227,6 +227,13 @@ class FeatSARSAAgent(Agent):
         if state.getNumFood() < self.last_state.getNumFood():
             reward += 100
 
+        if len(state.getCapsules()) < len(self.last_state.getCapsules()):
+            reward += 5000        
+
+        # reward if ghosts are eaten
+        if sum(state.data._eaten) > 0:
+            reward += 2500
+
         if state.isWin():
             reward += 5000
 
@@ -517,8 +524,13 @@ class FeatQLAgent(FeatSARSAAgent):
 
 
 class DQNAgent(FeatQLAgent):
+<<<<<<< HEAD
     "Function approximation SARSA"
     def __init__ (self, maxa=1000, epsilon=1, log_name=None, gamma = 0.99, pretrained_model=None, output_model="./model.h5", map_size="7.20.3"):
+=======
+    "Deep Q-Network"
+    def __init__ (self, maxa=1000, epsilon=1, log_name=None, gamma = 0.99, pretrained_model=None, output_model="./model.h5"):
+>>>>>>> 7dff2124a3650aaa9f41a44f745840a3af2d9cd3
 
         self.directions = (Directions.NORTH, Directions.SOUTH, Directions.EAST, Directions.WEST) #, Directions.STOP)
 
@@ -598,11 +610,16 @@ class DQNAgent(FeatQLAgent):
             legal_vector[i] = 0 if all_actions[i] in legal else -10000
         current_map = util.get_state_image(state, self.last_map)
         q = self.model.predict(current_map)
-        q = q + legal_vector
-        action_index = np.argmax(q)
-        action = all_actions[action_index]
+        
+        sorted_ix = np.argsort(q)
+        sorted_ix = np.squeeze(sorted_ix)
+        sorted_ix = sorted_ix[::-1]
 
-        return action
+        for i in range(len(sorted_ix)):
+            action = all_actions[sorted_ix[i]]
+            if action in legal:
+                return action
+
 
     def egreedyAction(self, state):
         p = random.random()
@@ -632,7 +649,7 @@ class DQNAgent(FeatQLAgent):
             self.best_a = self.greedyAction(state)
 
         elif self.last_map is None:
-            #fist action
+            #first action
             self.best_a = self.randomAction(state)
             num_food = state.getNumFood()
             dists = computeDistances(state, num_food, self.directions)
