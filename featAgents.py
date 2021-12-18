@@ -524,13 +524,8 @@ class FeatQLAgent(FeatSARSAAgent):
 
 
 class DQNAgent(FeatQLAgent):
-<<<<<<< HEAD
-    "Function approximation SARSA"
-    def __init__ (self, maxa=1000, epsilon=1, log_name=None, gamma = 0.99, pretrained_model=None, output_model="./model.h5", map_size="7.20.3"):
-=======
     "Deep Q-Network"
-    def __init__ (self, maxa=1000, epsilon=1, log_name=None, gamma = 0.99, pretrained_model=None, output_model="./model.h5"):
->>>>>>> 7dff2124a3650aaa9f41a44f745840a3af2d9cd3
+    def __init__ (self, maxa=1000, epsilon=1, log_name=None, gamma = 0.99, pretrained_model=None, output_model="./model.h5", map_size="7.20.3"):
 
         self.directions = (Directions.NORTH, Directions.SOUTH, Directions.EAST, Directions.WEST) #, Directions.STOP)
 
