@@ -9,8 +9,14 @@ from feat_utils import NFEATURES, computeDistances, filterDist
 import models
 import json
 from collections import deque
-
 from keras.models import model_from_json, clone_model
+
+
+import torch
+from torch import nn
+import torch.nn.functional as F
+import matplotlib.pyplot as plt
+import math
 
 
 gamma_range    = np.array([0.9])
@@ -812,76 +818,22 @@ class DQNAgent(FeatQLAgent):
 
 # --------------------------------------------------------------------------------
 
-import torch
+def moving_average(x, w):
+    return np.convolve(x, np.ones(w), 'valid') / w
 
-from torch import nn
-
-def _initialize_weights(amodel):
-        for module in amodel.modules():
-            if isinstance(module, nn.Conv2d) or isinstance(module, nn.Linear):
-                print("if module", module)
-                nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
-                #nn.init.normal_(module.weight, std=0.1)
-                #nn.init.constant_(module.weight,0.)
-                if module.bias is not None:
-                    module.bias.data.zero_()
-            elif isinstance(module, nn.BatchNorm2d):
-                print("else module", module)
-                nn.init.constant_(module.weight, 1)
-                nn.init.constant_(module.bias, 0)
-        
-        #exit()
-
-def initialize_weights_random(amodel):
-    # Initializes weights according to the DCGAN paper
-    for m in amodel.modules():
-        if isinstance(m, (nn.Conv2d, nn.ConvTranspose2d, nn.BatchNorm2d)):
-            nn.init.normal_(m.weight.data, 0.0, 0.02)
-
-
-# _initialize_weights(model)
-
-
-class Net(nn.Module):
-    def __init__(self,xsize=28,ysize=28):
-        super(Net, self).__init__()
-        self.bn0   = nn.BatchNorm2d(3)
-        self.pool = nn.MaxPool2d(kernel_size=2, stride=2, padding=1)
-        self.conv1 = nn.Conv2d(in_channels=3, out_channels=8, kernel_size=3, stride=1, padding=1, dilation=1)
-        self.bn1   = nn.BatchNorm2d(8)
-        self.conv2 = nn.Conv2d(in_channels=8, out_channels=16, kernel_size=3, stride=1, padding=1, dilation=1)
-        self.bn2   = nn.BatchNorm2d(16)
-        self.conv3 = nn.Conv2d(in_channels=16, out_channels=32, kernel_size=3, stride=1, padding=1, dilation=1)
-        self.bn3   = nn.BatchNorm2d(32)
-        #self.fc1 = nn.Linear(32 * (xsize-6) * (ysize-6), 256)
-        self.fc1 = nn.Linear(32*xsize*ysize, 128)
-        #self.fc1 = nn.Linear(128, 128)
-        self.fc2 = nn.Linear(128, 4)
-        self.softmax = torch.nn.Softmax(dim=1)
-
-    def forward(self, x):
-        # print(x.shape)
-        x = self.bn0(x)
-        x = F.relu(self.conv1(x))
-        #x = self.pool(x)
-        #x = self.bn1(x)
-        x = F.relu(self.conv2(x))
-        #x = self.pool(x)
-        #x = self.bn2(x)
-        x = F.relu(self.conv3(x))
-        #x = self.pool(x)
-        #x = self.bn3(x)
-        x = torch.flatten(x, 1) # flatten all dimensions except batch
-        x = F.relu(self.fc1(x))
-        x = self.fc2(x)
-        x = self.softmax(x)
-        return x
-
-
+def get_size(xsize,ysize):
+    strides = [4,2,1]
+    final_size = [xsize,ysize]
+    for s in strides:
+        final_size = [math.ceil(final_size[0]/s), math.ceil(final_size[1]/s)]
+    
+    return final_size[0]*final_size[1]
 
 class BigNet(nn.Module):
     def __init__(self,xsize=28,ysize=28):
         super(BigNet, self).__init__()
+
+        self.inner_size = int(get_size(xsize, ysize))
 
         self.feat = nn.Sequential(
             nn.Conv2d(in_channels=3, out_channels=32, kernel_size=7, stride=4, padding=3, dilation=1),
@@ -894,7 +846,7 @@ class BigNet(nn.Module):
         )
 
         self.linear = nn.Sequential(
-            nn.Linear(64*4, 512),
+            nn.Linear(64*self.inner_size, 512),
             nn.ReLU(inplace=True),
             nn.Linear(512,4),
         )
@@ -902,45 +854,14 @@ class BigNet(nn.Module):
         self.softmax = torch.nn.Softmax(dim=1)
 
     def forward(self, x):
-        
-        # print(x.shape)
-
         x = self.feat(x)
-
-        # print(x.shape)
-
         x = self.linear(x)
-
         x = self.softmax(x)
         return x
 
-
-#from torchsummary import summary
-import torch.nn.functional as F
-
-def moving_average(x, w):
-    return np.convolve(x, np.ones(w), 'valid') / w
-
-
-import matplotlib.pyplot as plt
-
-class PosModel(nn.Module):
-    def __init__(self,inputsize = 2, nactions=4, hiddensize = 256):
-        super(PosModel, self).__init__()
-        self.fc1 = nn.Linear(inputsize, hiddensize)
-        self.fc2 = nn.Linear(hiddensize, nactions)
-        self.softmax = torch.nn.Softmax(dim=1)
-
-    def forward(self, x):
-        x = F.relu(self.fc1(x))
-        x = self.fc2(x)
-        x = self.softmax(x)
-        return x
-
-import os
 class REAgent(Agent):
     "REINFORCE"
-    def __init__ (self, lr=0.001, maxa=5000, gamma=0.99, image=False,horizon=10000000,log_name=None):
+    def __init__ (self, lr=0.001, maxa=5000, gamma=0.99,horizon=10000000,log_name=None,map_size="3.10.12"):
         self.lr = float(lr)
         self.maxa = int(maxa)
         self.gamma = float(gamma)
@@ -949,12 +870,10 @@ class REAgent(Agent):
 
         self.init_values()
 
-        self.image = image
-        
-        if not self.image:
-            self.model = PosModel()
-        else:
-            self.model = BigNet(10,12)
+        map_size_array = map_size.split(".")
+        self.map_size = (int(map_size_array[0]),int(map_size_array[1]),int(map_size_array[2]))
+
+        self.model = BigNet(self.map_size[1],self.map_size[2])
 
         self.optim = torch.optim.Adam(self.model.parameters(), lr=self.lr)
 
@@ -967,17 +886,11 @@ class REAgent(Agent):
         self.score_log = []
 
         self.log_name = log_name
-
-        if os.path.exists('loss.png'):
-            os.rename("loss.png", "loss_1.png")
         
         self.is_train = True
 
         self.horizon = int(horizon)
 
-        #initialize_weights_random(self.model)
-
-        #_initialize_weights(self.model)
 
     def update_log(self):
 
@@ -1022,8 +935,8 @@ class REAgent(Agent):
             self.score_log.append(state.getScore())
 
 
-            if self.episodes % 50 == 0:
-                self.plot()
+            # if self.episodes % 50 == 0:
+            #     self.plot()
 
             if self.log_name is not None:
                 self.update_log()
@@ -1159,11 +1072,8 @@ class REAgent(Agent):
     def getModelAction(self, state):
 
         pos = torch.Tensor(state.getPacmanPosition()).unsqueeze(0)
-        if self.image:
-            current_map = util.get_state_image(state, None).transpose(0,3,1,2)
-            current_map = torch.Tensor(current_map)
-        else:    
-            current_map = pos
+        current_map = util.get_state_image(state, None).transpose(0,3,1,2)
+        current_map = torch.Tensor(current_map)
         
 
         prob = self.model.forward(current_map)
@@ -1191,7 +1101,7 @@ class REAgent(Agent):
             self.invalid_action = True
 
 
-        print("pos",pos, prob, action, self.invalid_action)
+        #print("pos",pos, prob, action, self.invalid_action)
 
         self.probs_list.append(prob[0][np.where(self.actions == chosed_action)])
 
