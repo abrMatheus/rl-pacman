@@ -1,2 +1,11 @@
 numpy
-
+matplotlib=2.2.5
+seaborn==0.9.1
+pillow==6.2.2
+scipy==0.9.1
+mkl
+pytest
+future
+torch==1.4.0
+theano==1.0.5
+keras==2.2.4

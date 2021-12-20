@@ -821,19 +821,11 @@ class DQNAgent(FeatQLAgent):
 def moving_average(x, w):
     return np.convolve(x, np.ones(w), 'valid') / w
 
-def get_size(xsize,ysize):
-    strides = [4,2,1]
-    final_size = [xsize,ysize]
-    for s in strides:
-        final_size = [math.ceil(final_size[0]/s), math.ceil(final_size[1]/s)]
-    
-    return final_size[0]*final_size[1]
-
 class BigNet(nn.Module):
-    def __init__(self,xsize=28,ysize=28):
+    def __init__(self,xsize=28,ysize=28, inner_size=4):
         super(BigNet, self).__init__()
 
-        self.inner_size = int(get_size(xsize, ysize))
+        self.inner_size = inner_size
 
         self.feat = nn.Sequential(
             nn.Conv2d(in_channels=3, out_channels=32, kernel_size=7, stride=4, padding=3, dilation=1),
@@ -873,7 +865,13 @@ class REAgent(Agent):
         map_size_array = map_size.split(".")
         self.map_size = (int(map_size_array[0]),int(map_size_array[1]),int(map_size_array[2]))
 
-        self.model = BigNet(self.map_size[1],self.map_size[2])
+        if map_size =='3.20.7':
+            self.inner_size=3
+        
+        else:
+            self.inner_size=4
+
+        self.model = BigNet(self.map_size[1],self.map_size[2], self.inner_size)
 
         self.optim = torch.optim.Adam(self.model.parameters(), lr=self.lr)
 

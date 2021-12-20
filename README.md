@@ -21,3 +21,7 @@ Running a demo.
 ```sh
 python pacman.py --layout testMaze --pacman DumbAgent
 ```
+
+# Important
+
+Notice the report file [report_p2_mo436.ipynb](report_p2_mo436.ipynb)
